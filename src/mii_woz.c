@@ -10,7 +10,27 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+// RP2350/Pico compatibility - no libgen.h
+#ifdef MII_RP2350
+// Simple basename implementation for Pico
+static const char *pico_basename(const char *path) {
+    const char *p = strrchr(path, '/');
+    return p ? p + 1 : path;
+}
+#define basename pico_basename
+#else
 #include <libgen.h>
+#endif
+
+// Endian conversion macros for little-endian platforms (ARM is LE)
+// RP2350 is little-endian, so these are no-ops
+#ifndef le32toh
+#define le32toh(x) (x)
+#define htole32(x) (x)
+#define le16toh(x) (x)
+#define htole16(x) (x)
+#endif
 
 #include "mii_floppy.h"
 #include "mii_woz.h"

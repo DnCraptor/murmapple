@@ -17,9 +17,18 @@ static std::queue<KeyEvent> event_queue;
 
 // HID to Apple II ASCII mapping
 // Returns the Apple II ASCII character for a given HID keycode
+// Special return values:
+//   0xF1 = F1 key (reserved)
+//   0xFB = F11 key (disk selector)
+//   0xFC = F12 key (reserved)
 static unsigned char hid_to_apple2(uint8_t code, uint8_t modifiers) {
     bool shift = (modifiers & (KEYBOARD_MODIFIER_LEFTSHIFT | KEYBOARD_MODIFIER_RIGHTSHIFT)) != 0;
     bool ctrl = (modifiers & (KEYBOARD_MODIFIER_LEFTCTRL | KEYBOARD_MODIFIER_RIGHTCTRL)) != 0;
+    
+    // Function keys - return special codes
+    if (code >= 0x3A && code <= 0x45) {  // F1-F12
+        return 0xF1 + (code - 0x3A);  // F1=0xF1, F2=0xF2, ... F11=0xFB, F12=0xFC
+    }
     
     // Letters - Apple II Monitor expects uppercase
     if (code >= 0x04 && code <= 0x1D) {

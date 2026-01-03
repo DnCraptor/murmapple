@@ -34,6 +34,8 @@ pico_sdk_init()
 
 # Copy driver subdirectories from murmdoom structure
 add_subdirectory(drivers/ps2kbd)
+add_subdirectory(drivers/fatfs)
+add_subdirectory(drivers/sdcard)
 
 # Create a library for drivers
 add_library(drivers
@@ -58,6 +60,18 @@ add_executable(murmapple
     src/mii.c
     src/mii_rom_iiee.c
     src/mii_rom_iiee_video.c
+    src/disk_loader.c
+    src/disk_ui.c
+    # Disk drive support
+    src/mii_slot.c
+    src/mii_dd_stub.c
+    src/mii_floppy.c
+    src/mii_disk2.c
+    src/mii_dsk.c
+    src/mii_nib.c
+    src/mii_woz.c
+    src/mii_vcd_stub.c
+    src/mii_rom_disk2_p5.c
 )
 
 target_include_directories(murmapple PRIVATE
@@ -84,8 +98,11 @@ target_link_libraries(murmapple
     hardware_pio
     hardware_clocks
     hardware_vreg
+    hardware_spi
     drivers
     ps2kbd
+    sdcard
+    fatfs
 )
 
 # Enable USB serial output for debugging

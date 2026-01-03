@@ -9,7 +9,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+// RP2350/Pico compatibility - no libgen.h
+#ifdef MII_RP2350
+// Simple basename implementation for Pico
+static const char *pico_nib_basename(const char *path) {
+    const char *p = strrchr(path, '/');
+    return p ? p + 1 : path;
+}
+#define basename pico_nib_basename
+#else
 #include <libgen.h>
+#endif
 
 #include "mii_dsk.h"
 

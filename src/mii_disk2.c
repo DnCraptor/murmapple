@@ -17,6 +17,24 @@
 #include "mii_woz.h"
 #include "mii_disk2.h"
 
+// RP2350: Use PSRAM for large allocations
+#ifdef MII_RP2350
+// PSRAM allocation for disk2 card - the structure is ~500KB!
+#define PSRAM_BASE 0x11000000
+// Reserve space after disk images (2 * 256KB = 512KB offset, then card structure)
+#define DISK2_PSRAM_OFFSET (512 * 1024)
+static mii_card_disk2_t *psram_alloc_disk2(void) {
+    // Allocate disk2 card structure in PSRAM
+    mii_card_disk2_t *c = (mii_card_disk2_t *)(PSRAM_BASE + DISK2_PSRAM_OFFSET);
+    memset(c, 0, sizeof(*c));
+    printf("Disk2 card allocated in PSRAM at %p (size=%u bytes)\n", c, (unsigned)sizeof(*c));
+    return c;
+}
+#define DISK2_ALLOC() psram_alloc_disk2()
+#else
+#define DISK2_ALLOC() calloc(1, sizeof(mii_card_disk2_t))
+#endif
+
 
 enum {
 	SIG_DR,			// data register
@@ -138,7 +156,11 @@ _mii_disk2_init(
 		mii_t * mii,
 		struct mii_slot_t *slot )
 {
-	mii_card_disk2_t *c = calloc(1, sizeof(*c));
+	mii_card_disk2_t *c = DISK2_ALLOC();
+	if (!c) {
+		printf("ERROR: Failed to allocate Disk II card structure\n");
+		return -1;
+	}
 	slot->drv_priv = c;
 	c->mii = mii;
 	printf("%s loading in slot %d\n", __func__, slot->id + 1);

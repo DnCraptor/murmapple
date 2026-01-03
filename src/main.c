@@ -23,6 +23,12 @@
 #include "mii_65c02.h"
 #include "mii_analog.h"
 #include "mii_speaker.h"
+#include "mii_slot.h"
+#include "disk_loader.h"
+#include "disk_ui.h"
+
+// Special key codes from keyboard driver
+#define KEY_F11 0xFB
 
 // Stubs for desktop-only functions we don't use on RP2350
 void mii_analog_access(struct mii_t *mii, mii_analog_t *analog,
@@ -133,6 +139,20 @@ static void process_keyboard(void) {
             uint32_t delta = now - last_key_time;
             printf("KEY: 0x%02X delta=%lu us\n", key, delta);
             last_key_time = now;
+            
+            // Check for F11 - disk selector toggle
+            if (key == KEY_F11) {
+                disk_ui_toggle();
+                continue;
+            }
+            
+            // If disk UI is visible, send keys to it
+            if (disk_ui_is_visible()) {
+                disk_ui_handle_key(key);
+                continue;
+            }
+            
+            // Normal key - send to emulator
             mii_keypress(&g_mii, key);
         }
     }
@@ -152,14 +172,28 @@ static void core1_main(void) {
     
     printf("Core 1: Starting video rendering\n");
     
+    bool was_ui_visible = false;
+    
     while (1) {
         sleep_ms(16);
         
-        // Render Apple II video
-        mii_video_render(&g_mii);
+        // Check if disk UI is visible
+        bool ui_visible = disk_ui_is_visible();
         
-        // Scale and copy to HDMI framebuffer
-        mii_video_scale_to_hdmi(&g_mii.video, g_hdmi_buffer);
+        if (ui_visible) {
+            // Clear framebuffer only once when UI first becomes visible
+            if (!was_ui_visible) {
+                memset(g_hdmi_buffer, 0, HDMI_WIDTH * HDMI_HEIGHT);
+            }
+            // Render disk UI (uses internal dirty flag to avoid redundant redraws)
+            disk_ui_render(g_hdmi_buffer, HDMI_WIDTH, HDMI_HEIGHT);
+        } else {
+            // Normal Apple II video rendering
+            mii_video_render(&g_mii);
+            mii_video_scale_to_hdmi(&g_mii.video, g_hdmi_buffer);
+        }
+        
+        was_ui_visible = ui_visible;
     }
 }
 
@@ -296,9 +330,29 @@ int main() {
     printf("Initializing PS/2 keyboard...\n");
     ps2kbd_init();
     
+    // Initialize SD card and scan for disk images
+    printf("Initializing SD card and disk images...\n");
+    if (disk_loader_init() == 0) {
+        printf("SD card ready, found %d disk images\n", g_disk_count);
+    } else {
+        printf("SD card not available (will run without disks)\n");
+    }
+    
     // Initialize the Apple IIe emulator
     printf("Initializing Apple IIe emulator...\n");
     mii_init(&g_mii);
+    
+    // Install Disk II controller in slot 6
+    printf("Installing Disk II controller in slot 6...\n");
+    int slot_res = mii_slot_drv_register(&g_mii, 6, "disk2");
+    if (slot_res < 0) {
+        printf("ERROR: Failed to install Disk II controller: %d\n", slot_res);
+    } else {
+        printf("Disk II controller installed in slot 6\n");
+    }
+    
+    // Initialize disk UI with emulator pointer (slot 6 is standard for Disk II)
+    disk_ui_init_with_emulator(&g_mii, 6);
     
     // Load Apple IIe ROM (16K at $C000-$FFFF)
     printf("Loading Apple IIe ROM...\n");
