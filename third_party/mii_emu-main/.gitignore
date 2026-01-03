@@ -1,0 +1,10 @@
+.bash_history*
+build-*
+.vscode
+compile_commands.json
+cachegrind.out.*
+callgrind.out.*
+.cache
+*.miov
+hezner
+*_scrot.png
