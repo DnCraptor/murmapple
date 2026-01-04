@@ -632,8 +632,15 @@ mii_access_keyboard(
 		}	break;
 		case 0xc061 ... 0xc063: // Push Button 0, 1, 2 (Apple Keys)
 			res = true;
-			if (!write)
+			if (!write) {
 				*byte = mii_bank_peek(sw, addr);
+				// Debug: log first 20 button reads with non-zero value
+				static int btn_read_cnt = 0;
+				if ((*byte & 0x80) && btn_read_cnt < 20) {
+					btn_read_cnt++;
+					printf("BTN READ: $%04X=%02X PC=$%04X\n", addr, *byte, mii->cpu.PC);
+				}
+			}
 			break;
 	}
 	return res;
@@ -735,10 +742,13 @@ mii_init(
 	
 	// Skip desktop-specific subsystems on RP2350:
 	// - mii_dd_system_init (disk drive)
-	// - mii_analog_init (joystick)
-	// - mii_video_init (we have our own HDMI video)
 	// - mii_audio_init (audio subsystem)
 	// - mii_speaker_init (speaker)
+	// Note: mii_analog_init IS needed for paddle/joystick timer-based timing!
+	mii_analog_init(mii, &mii->analog);
+	// Note: mii_video_init IS needed for VBL timer (games depend on VBL timing)
+	// Our version registers a lightweight VBL-only timer, not the full renderer
+	mii_video_init(mii);
 
 	printf("  mii_init: resetting CPU...\n");
 	mii_reset(mii, true);
@@ -881,6 +891,18 @@ mii_reset(
 	mii_bank_poke(sw, SW80COL, 0);
 	mii_bank_poke(sw, SWINTCXROM, 0x80);
 	mii_bank_poke(sw, SWRAMWORKS_BANK, 0);
+	// Clear video soft switches on reset (fixes games checking mode on boot)
+	mii_bank_poke(sw, SWTEXT, 0);
+	mii_bank_poke(sw, SWMIXED, 0);
+	mii_bank_poke(sw, SWHIRES, 0);
+	mii_bank_poke(sw, SWPAGE2, 0);
+	mii_bank_poke(sw, SWALTCHARSET, 0);
+	mii_bank_poke(sw, SWRDDHIRES, 0);
+	mii_bank_poke(sw, SWVBL, 0x80);  // VBL starts in active display
+	// Clear button states on reset (fixes games seeing button as pressed)
+	mii_bank_poke(sw, 0xc061, 0);  // Button 0
+	mii_bank_poke(sw, 0xc062, 0);  // Button 1
+	mii_bank_poke(sw, 0xc063, 0);  // Button 2
 	mii->mem_dirty = 1;
 	if (cold) {
 		/*  these HAS to be reset in that state somehow */

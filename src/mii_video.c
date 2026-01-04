@@ -621,6 +621,41 @@ mii_video_OOB_write_check(
 	(void)size;
 	mii->video.frame_dirty = 1;
 }
+
+/*
+ * Lightweight VBL timer for RP2350.
+ * This ONLY handles the VBL soft switch timing - no pixel rendering.
+ * Games depend on accurate VBL timing for animation pacing.
+ * 
+ * VBL timing per https://rich12345.tripod.com/aiivideo/vbl.html:
+ * - 192 visible lines * 65 cycles = 12480 cycles (VBL = 0x80)
+ * - VBL period = 4550 cycles (VBL = 0x00)
+ * - Total frame = 17030 cycles
+ */
+static uint64_t
+mii_video_vbl_timer_cb(
+		mii_t *mii,
+		void *param)
+{
+	(void)param;
+	mii_bank_t * sw = &mii->bank[MII_BANK_SW];
+	mii_video_t * video = &mii->video;
+	
+	// Toggle between visible (VBL=0x80) and vblank (VBL=0x00)
+	if (video->vbl_phase == 0) {
+		// End of visible area, entering vblank
+		mii_bank_poke(sw, SWVBL, 0x00);
+		video->vbl_phase = 1;
+		video->frame_count++;
+		return (uint64_t)(MII_VBL_UP_CYCLES * mii->speed);
+	} else {
+		// End of vblank, starting visible area
+		mii_bank_poke(sw, SWVBL, 0x80);
+		video->vbl_phase = 0;
+		return (uint64_t)(MII_VBL_DOWN_CYCLES * mii->speed);
+	}
+}
+
 #else // !MII_RP2350
 /*
  * This return the correct line drawing function callback for the mode
@@ -1033,7 +1068,14 @@ mii_video_init(
 	mii_video_t * video = &mii->video;
 	video->rom = mii_rom_get(
 			mii->emu == MII_EMU_IIC ? "iic_video" : "iiee_video");
-#if !MII_RP2350
+#if MII_RP2350
+	// RP2350: Use lightweight VBL-only timer for proper game timing
+	// Start in visible phase
+	video->vbl_phase = 0;
+	mii->video.timer_id = mii_timer_register(mii,
+				mii_video_vbl_timer_cb, NULL, MII_VBL_DOWN_CYCLES, "vbl_timer");
+	printf("VBL timer registered (id=%d)\n", mii->video.timer_id);
+#else
 	mii->video.timer_id = mii_timer_register(mii,
 				mii_video_timer_cb, NULL, MII_VIDEO_H_CYCLES, __func__);
 #endif

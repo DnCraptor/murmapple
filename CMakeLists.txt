@@ -42,8 +42,9 @@ add_library(drivers
     drivers/HDMI.c
     drivers/psram_init.c
     drivers/psram_allocator.c
+    drivers/nespad/nespad.c
 )
-target_include_directories(drivers PUBLIC drivers src)
+target_include_directories(drivers PUBLIC drivers drivers/nespad src)
 target_compile_definitions(drivers PRIVATE
     BOARD_${BOARD_VARIANT}
     PSRAM_MAX_FREQ_MHZ=${PSRAM_SPEED}
@@ -62,6 +63,7 @@ add_executable(murmapple
     src/mii_rom_iiee_video.c
     src/disk_loader.c
     src/disk_ui.c
+    src/mii_analog.c
     # Disk drive support
     src/mii_slot.c
     src/mii_dd_stub.c

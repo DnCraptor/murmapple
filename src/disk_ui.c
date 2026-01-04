@@ -11,6 +11,7 @@
 #include "disk_loader.h"
 #include "mii.h"
 #include "mii_sw.h"
+#include "mii_bank.h"
 
 // Emulator reference (for mounting disks)
 static mii_t *g_mii = NULL;
@@ -276,10 +277,43 @@ bool disk_ui_handle_key(uint8_t key) {
                             // Reset the CPU so it can boot from the new disk
                             printf("Disk UI: resetting CPU for disk boot\n");
                             mii_reset(g_mii, true);
+                            
+                            // Clear keyboard state so no spurious key is pending
+                            // This prevents animations from being skipped due to leftover
+                            // keypress from the disk UI (e.g., the Enter key used to select)
+                            mii_bank_t *sw_bank = &g_mii->bank[MII_BANK_SW];
+                            mii_bank_poke(sw_bank, SWKBD, 0);
+                            mii_bank_poke(sw_bank, SWAKD, 0);
+                            
+                            // DEBUG: Dump all input-related soft switch values
+                            printf("=== INPUT STATE AFTER RESET ===\n");
+                            printf("Keyboard: $C000(KBD)=%02X $C010(AKD)=%02X\n",
+                                   mii_bank_peek(sw_bank, SWKBD),
+                                   mii_bank_peek(sw_bank, SWAKD));
+                            printf("Buttons:  $C061=%02X $C062=%02X $C063=%02X\n",
+                                   mii_bank_peek(sw_bank, 0xc061),
+                                   mii_bank_peek(sw_bank, 0xc062),
+                                   mii_bank_peek(sw_bank, 0xc063));
+                            printf("Paddles:  $C064=%02X $C065=%02X $C066=%02X $C067=%02X\n",
+                                   mii_bank_peek(sw_bank, 0xc064),
+                                   mii_bank_peek(sw_bank, 0xc065),
+                                   mii_bank_peek(sw_bank, 0xc066),
+                                   mii_bank_peek(sw_bank, 0xc067));
+                            printf("Video:    TEXT=%02X MIXED=%02X HIRES=%02X PAGE2=%02X\n",
+                                   mii_bank_peek(sw_bank, SWTEXT),
+                                   mii_bank_peek(sw_bank, SWMIXED),
+                                   mii_bank_peek(sw_bank, SWHIRES),
+                                   mii_bank_peek(sw_bank, SWPAGE2));
+                            printf("80COL=%02X DHIRES=%02X VBL=%02X\n",
+                                   mii_bank_peek(sw_bank, SW80COL),
+                                   mii_bank_peek(sw_bank, SWRDDHIRES),
+                                   mii_bank_peek(sw_bank, SWVBL));
+                            printf("================================\n");
+                            
 						// Make sure slot ROMs are visible for PR#6 / disk boot.
 						// The core reset defaults keep INTCXROM ON for reliable BASIC boot.
-						uint8_t sw = 0;
-						mii_mem_access(g_mii, SWINTCXROMOFF, &sw, true, true);
+						uint8_t sw_byte = 0;
+						mii_mem_access(g_mii, SWINTCXROMOFF, &sw_byte, true, true);
                         } else {
                             printf("Disk UI: failed to mount disk to emulator\n");
                         }

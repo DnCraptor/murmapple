@@ -18,6 +18,7 @@
 #include "../drivers/HDMI.h"
 #include "mii.h"
 #include "mii_sw.h"
+#include "mii_bank.h"
 #include "mii_rom.h"
 #include "mii_video.h"
 #include "mii_65c02.h"
@@ -31,11 +32,7 @@
 #define KEY_F11 0xFB
 
 // Stubs for desktop-only functions we don't use on RP2350
-void mii_analog_access(struct mii_t *mii, mii_analog_t *analog,
-                       uint16_t addr, uint8_t *byte, bool write) {
-    (void)mii; (void)analog; (void)addr; (void)byte; (void)write;
-    // No analog (joystick) support on RP2350 yet
-}
+// Note: mii_analog_access is now provided by mii_analog.c for paddle timing
 
 void mii_speaker_click(mii_speaker_t *speaker) {
     (void)speaker;
@@ -66,6 +63,9 @@ extern void psram_set_sram_mode(int enable);
 extern void ps2kbd_init(void);
 extern void ps2kbd_tick(void);
 extern int ps2kbd_get_key(int* pressed, unsigned char* key);
+
+// NES/SNES gamepad interface
+#include "nespad/nespad.h"
 
 // Flash timing configuration for overclocking
 #define FLASH_MAX_FREQ_MHZ 88
@@ -364,6 +364,15 @@ int main() {
     printf("Initializing PS/2 keyboard...\n");
     ps2kbd_init();
     
+    // Initialize NES/SNES gamepad
+    printf("Initializing NES gamepad...\n");
+    if (nespad_begin(clock_get_hz(clk_sys) / 1000, NESPAD_GPIO_CLK, NESPAD_GPIO_DATA, NESPAD_GPIO_LATCH)) {
+        printf("NES gamepad initialized (CLK=%d, DATA=%d, LATCH=%d)\n",
+               NESPAD_GPIO_CLK, NESPAD_GPIO_DATA, NESPAD_GPIO_LATCH);
+    } else {
+        printf("NES gamepad init failed\n");
+    }
+    
     // Initialize SD card and scan for disk images
     printf("Initializing SD card and disk images...\n");
     if (disk_loader_init() == 0) {
@@ -481,18 +490,16 @@ int main() {
     
     // Main emulation loop on core 0
     // Apple II runs at ~1.023 MHz = 1,023,000 cycles/second.
-    // Provide a basic SWVBL timing signal and throttle to real time.
-    // Video timing constants are aligned with the desktop video timer:
-    //   visible+HB: 12480 cycles, VBL: 4550 cycles (total 17030 cycles/frame)
+    // VBL timing is handled by mii_video_vbl_timer_cb at proper cycle counts.
+    // Video timing: visible=12480 cycles, VBL=4550 cycles (total 17030/frame)
     const uint32_t a2_cycles_per_second = 1023000;
-    const uint32_t cycles_visible = 12480;
-    const uint32_t cycles_vblank = 4550;
-    const uint32_t cycles_per_frame = cycles_visible + cycles_vblank;
+    const uint32_t cycles_per_frame = 17030;  // 12480 visible + 4550 vblank
     const uint32_t target_frame_us = (uint32_t)((1000000ULL * cycles_per_frame + (a2_cycles_per_second / 2)) / a2_cycles_per_second);
     
     uint32_t frame_count = 0;
     uint32_t total_emu_time = 0;
     uint16_t last_pc = 0;
+    uint32_t boot_time_us = time_us_32();  // Track real wall-clock time
 
     // Debug state (printed from core0 to avoid disturbing HDMI DMA on core1)
     uint32_t last_mode_key = 0xffffffffu;
@@ -506,19 +513,60 @@ int main() {
         ps2kbd_tick();
         process_keyboard();
         
-        // Run CPU for one frame worth of cycles with a simple VBL window.
-        // SWVBL is 0 during retrace (vblank), 0x80 during active display.
-        mii_bank_poke(&g_mii.bank[MII_BANK_SW], SWVBL, 0x80);
-        mii_run_cycles(&g_mii, cycles_visible);
+        // Poll NES gamepad and update Apple II buttons
+        nespad_read();
+        {
+            mii_bank_t *sw = &g_mii.bank[MII_BANK_SW];
+            // Map NES buttons to Apple II buttons:
+            // A/B -> Open Apple (Button 0, $C061)
+            // A/B -> Solid Apple (Button 1, $C062)
+            // Start -> Button 2 ($C063)
+            uint8_t btn0 = (nespad_state & (DPAD_A | DPAD_B)) ? 0x80 : 0x00;
+            uint8_t btn1 = (nespad_state & (DPAD_A | DPAD_B)) ? 0x80 : 0x00;
+            uint8_t btn2 = (nespad_state & DPAD_START) ? 0x80 : 0x00;
+            mii_bank_poke(sw, 0xc061, btn0);
+            mii_bank_poke(sw, 0xc062, btn1);
+            mii_bank_poke(sw, 0xc063, btn2);
+            
+            // Debug: print nespad_state if non-zero (gamepad pressed)
+            static uint32_t last_printed = 0;
+            if (nespad_state != 0 && nespad_state != last_printed) {
+                printf("NESPAD: 0x%06lX btn0=%02X btn1=%02X btn2=%02X\n", 
+                       nespad_state, btn0, btn1, btn2);
+                last_printed = nespad_state;
+            } else if (nespad_state == 0 && last_printed != 0) {
+                printf("NESPAD: released\n");
+                last_printed = 0;
+            }
+        }
+        
+        // Run CPU for one frame worth of cycles.
+        // VBL timing is now handled by mii_video_vbl_timer_cb which toggles
+        // SWVBL at the proper cycle counts during execution. This allows
+        // games that wait for VBL transitions to work correctly.
+        mii_run_cycles(&g_mii, cycles_per_frame);
 
-        mii_bank_poke(&g_mii.bank[MII_BANK_SW], SWVBL, 0x00);
-        mii_run_cycles(&g_mii, cycles_vblank);
-
-        // Advance video frame counter for flashing text, etc.
-        g_mii.video.frame_count++;
+        // frame_count is now incremented by the VBL timer callback
         
         uint32_t frame_end = time_us_32();
         total_emu_time += (frame_end - frame_start);
+
+        // DEBUG: Print every frame for first 10 seconds after disk boot
+        static uint32_t disk_boot_frame = 0;
+        static bool disk_booted = false;
+        if (!disk_booted && g_mii.cpu.PC >= 0xC600 && g_mii.cpu.PC < 0xC700) {
+            disk_booted = true;
+            disk_boot_frame = frame_count;
+            printf("=== DISK BOOT DETECTED at frame %lu ===\n", frame_count);
+        }
+        if (disk_booted && (frame_count - disk_boot_frame) < 3600) {
+            // Print every 10 frames for 60 seconds (3600 frames)
+            if ((frame_count - disk_boot_frame) % 10 == 0) {
+                uint32_t wall_ms = (time_us_32() - boot_time_us) / 1000;
+                printf("F%lu W=%lums PC=$%04X cyc=%lu\n", 
+                       frame_count - disk_boot_frame, wall_ms, g_mii.cpu.PC, g_mii.cpu.cycle);
+            }
+        }
 
         // Throttle to real time so the emulator doesn't run too fast.
         uint32_t elapsed = frame_end - frame_start;
@@ -556,6 +604,20 @@ int main() {
                 const char *label = text_mode ? "TEXT" : (hires ? ((dhires && col80) ? "DHGR" : (mixed ? "HGR+MIXED" : "HGR")) : "LORES");
                 printf("VIDEO: text=%d hires=%d mixed=%d page2=%d(store80=%d raw=%d) col80=%d dhires=%d an3=%d -> %s\n",
                     text_mode, hires, mixed, page2_eff, store80, page2_raw, col80, dhires, an3, label);
+            }
+            
+            // Dump input state every second
+            {
+                mii_bank_t *sw_bank = &g_mii.bank[MII_BANK_SW];
+                uint32_t emu_sec = frame_count / 60;
+                uint32_t wall_sec = (time_us_32() - boot_time_us) / 1000000;
+                printf("EMU=%lus WALL=%lus INPUT: KBD=%02X AKD=%02X BTN=%02X/%02X/%02X\n",
+                       emu_sec, wall_sec,
+                       mii_bank_peek(sw_bank, SWKBD),
+                       mii_bank_peek(sw_bank, SWAKD),
+                       mii_bank_peek(sw_bank, 0xc061),
+                       mii_bank_peek(sw_bank, 0xc062),
+                       mii_bank_peek(sw_bank, 0xc063));
             }
 
             if (g_hdmi_front_buffer) {

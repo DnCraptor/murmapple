@@ -102,6 +102,11 @@ static inline uint get_psram_pin(void) {
 #define PS2_PIN_CLK  0
 #define PS2_PIN_DATA 1
 
+// NES/SNES Gamepad Pins (directly after HDMI pins)
+#define NESPAD_GPIO_CLK   14
+#define NESPAD_GPIO_DATA  16
+#define NESPAD_GPIO_LATCH 15
+
 #endif // BOARD_M1
 
 //=============================================================================
@@ -130,6 +135,11 @@ static inline uint get_psram_pin(void) {
 // PS/2 Keyboard Pins
 #define PS2_PIN_CLK  2
 #define PS2_PIN_DATA 3
+
+// NES/SNES Gamepad Pins (using available GPIOs)
+#define NESPAD_GPIO_CLK   20
+#define NESPAD_GPIO_DATA  22
+#define NESPAD_GPIO_LATCH 21
 
 #endif // BOARD_M2
 

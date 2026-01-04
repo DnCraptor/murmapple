@@ -66,6 +66,7 @@ typedef struct mii_video_t {
 	uint8_t 			timer_id;	// timer id for the video thread
 	uint8_t				line;		// current line for cycle timer
 	uint8_t 			an3_mode;	// current mode
+	uint8_t				vbl_phase;	// 0=visible, 1=vblank (RP2350 VBL timer)
 	uint16_t 			base_addr;	// current mode base address
 	uint16_t			line_addr;	// VRAM address for the line we are on
 	uint64_t 			timer_max;	// timer start value
