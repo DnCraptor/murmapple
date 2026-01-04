@@ -178,6 +178,11 @@ mii_signal_set_flags(
 		mii_signal_t * sig,
 		uint8_t flags );
 //! 'raise' an IRQ. Ie call their 'hooks', and raise any chained IRQs, and set the new 'value'
+#ifdef MII_RP2350
+// On RP2350, completely eliminate signal tracing overhead with macros
+#define mii_raise_signal(sig, value) ((void)0)
+#define mii_raise_signal_float(sig, value, floating) ((void)0)
+#else
 void
 mii_raise_signal(
 		mii_signal_t * sig,
@@ -188,6 +193,7 @@ mii_raise_signal_float(
 		mii_signal_t * sig,
 		uint32_t value,
 		int floating);
+#endif
 //! this connects a "source" IRQ to a "destination" IRQ
 void
 mii_connect_signal(

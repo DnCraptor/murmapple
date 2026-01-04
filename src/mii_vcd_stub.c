@@ -90,24 +90,8 @@ mii_signal_set_flags(
 	(void)sig; (void)flags;
 }
 
-void
-mii_raise_signal(
-		mii_signal_t *sig,
-		uint32_t value)
-{
-	(void)sig; (void)value;
-	// Signal tracing disabled on Pico
-}
-
-void
-mii_raise_signal_float(
-		mii_signal_t *sig,
-		uint32_t value,
-		int floating)
-{
-	(void)sig; (void)value; (void)floating;
-	// Signal tracing disabled on Pico
-}
+// mii_raise_signal and mii_raise_signal_float are now macros in mii_vcd.h
+// No function implementations needed
 
 void
 mii_connect_signal(

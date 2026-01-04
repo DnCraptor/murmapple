@@ -99,15 +99,19 @@ _mii_floppy_lss_cb(
 {
 	mii_card_disk2_t *c = param;
 	mii_floppy_t *f 	= &c->floppy[c->selected];
+	
 	if (!f->motor)
 		return 0;	// stop timer, motor is now off
 	// delta is ALWAYS negative, or zero here
 	int32_t delta = mii_timer_get(mii, c->timer_lss);
+	// Run LSS every cycle - timing critical for disk reads
 	uint64_t ret = -delta + 1;
-	do {
+	int ticks = (-delta + 1) * 2;  // 2 ticks per cycle
+	
+	while (ticks > 0) {
 		_mii_disk2_lss_tick(c);
-		_mii_disk2_lss_tick(c);
-	} while (delta++ < 0);
+		ticks--;
+	}
 	return ret;
 }
 
@@ -169,6 +173,11 @@ _mii_disk2_init(
 	mii_bank_write(
 			&mii->bank[MII_BANK_CARD_ROM],
 			addr, rom->rom, 256);
+	// Disable boot signature until a disk is mounted
+	// The boot signature is $A2 $20 at $Cn00-$Cn01, change first byte to disable
+	uint8_t disabled_sig = 0x00;  // Changed from $A2
+	mii_bank_write(&mii->bank[MII_BANK_CARD_ROM], addr, &disabled_sig, 1);
+	printf("Disk II boot signature disabled until disk is mounted\n");
 
 	c->sig = mii_alloc_signal(&mii->sig_pool, 0, SIG_COUNT, sig_names);
 	for (int i = 0; i < SIG_COUNT; i++)
@@ -194,17 +203,40 @@ _mii_disk2_init(
 	return 0;
 }
 
+// Debug counters - declared extern so they can be reset
+static uint32_t lss_dbg_count = 0;
+static uint32_t lss_tick_count = 0;
+static uint32_t lss_valid_count = 0;
+static int cpu_read_count = 0;
+
 static void
 _mii_disk2_reset(
 		mii_t * mii,
 		struct mii_slot_t *slot )
 {
 	mii_card_disk2_t *c = slot->drv_priv;
-//	printf("%s\n", __func__);
-	c->selected = 1;
-	_mii_floppy_motor_off_cb(mii, c);
+	printf("Disk II reset\n");
+	// Reset debug counters
+	lss_dbg_count = 0;
+	lss_tick_count = 0;
+	lss_valid_count = 0;
+	cpu_read_count = 0;
+	// Reset both drives
+	for (int i = 0; i < 2; i++) {
+		c->selected = i;
+		_mii_floppy_motor_off_cb(mii, c);
+		// Reset floppy head position to track 0
+		c->floppy[i].qtrack = 0;
+		c->floppy[i].bit_position = 0;
+		c->floppy[i].stepper = 0;
+	}
 	c->selected = 0;
-	_mii_floppy_motor_off_cb(mii, c);
+	c->data_register = 0;
+	c->write_register = 0;
+	c->head = 0;
+	c->clock = 0;
+	c->lss_mode = 0;
+	c->lss_skip = 0;
 	mii_raise_signal(c->sig + SIG_DRIVE, 0);
 }
 
@@ -274,6 +306,7 @@ _mii_disk2_access(
 		// off | off | 	Read data register
 		case 0:
 			ret = c->data_register;
+			// Removed verbose debug - disk reads working
 			break;
 		// on  | off | 	Read status register
 		case (1 << Q6_LOAD_BIT):
@@ -379,6 +412,26 @@ _mii_disk2_command(
 				fp[1] = &c->floppy[1];
 				res = 0;
 			}
+		}	break;
+		case MII_SLOT_D2_SET_BOOT: {
+			// Enable or disable the boot signature
+			int enable = param ? *(int*)param : 1;
+			uint16_t addr = 0xc100 + (slot->id * 0x100);
+			if (enable) {
+				// Restore the correct boot signature ($A2)
+				mii_rom_t * rom = mii_rom_get("disk2_p5");
+				if (rom) {
+					uint8_t boot_sig = rom->rom[0];  // Should be $A2
+					mii_bank_write(&mii->bank[MII_BANK_CARD_ROM], addr, &boot_sig, 1);
+					printf("Disk II boot signature enabled ($%02X)\n", boot_sig);
+				}
+			} else {
+				// Disable the boot signature
+				uint8_t disabled_sig = 0x00;
+				mii_bank_write(&mii->bank[MII_BANK_CARD_ROM], addr, &disabled_sig, 1);
+				printf("Disk II boot signature disabled\n");
+			}
+			res = 0;
 		}	break;
 	}
 	return res;
@@ -548,6 +601,17 @@ _mii_disk2_lss_tick(
 
 	uint8_t 	track_id 	= f->track_id[f->qtrack];
 	uint8_t * 	track 		= f->track_data[track_id];
+	
+	// Debug: Check if track data is valid (limited)
+	lss_tick_count++;
+	if (track == NULL) {
+		if (lss_dbg_count < 3) {
+			printf("LSS: track_data[%d] is NULL!\n", track_id);
+			lss_dbg_count++;
+		}
+		return;
+	}
+	
 	uint32_t 	byte_index 	= f->bit_position >> 3;
 	uint8_t 	bit_index 	= 7 - (f->bit_position & 7);
 	uint8_t 	rp 			= 0;
@@ -562,7 +626,14 @@ _mii_disk2_lss_tick(
 			/* pick a random bit position for the random data */
 			if (!f->random) {
 				f->random = 1;
+#ifdef MII_RP2350
+				// Fast LFSR-based random for RP2350 instead of slow random()
+				static uint32_t lfsr = 0xACE1u;
+				lfsr = (lfsr >> 1) ^ (-(lfsr & 1u) & 0xB400u);
+				f->random_position = lfsr % f->tracks[track_id].bit_count;
+#else
 				f->random_position = random() % f->tracks[track_id].bit_count;
+#endif
 			}
 			bit = f->track_data[MII_FLOPPY_NOISE_TRACK][f->random_position / 8];
 			rp = (bit >> (f->random_position % 8)) & 1;
@@ -603,6 +674,10 @@ _mii_disk2_lss_tick(
 				c->data_register <<= 1;
 				c->data_register |= !!(action & 0b0100);
 				mii_raise_signal(c->sig + SIG_DR, c->data_register);
+				// Debug: only count valid bytes, reduce noise
+				if (c->data_register & 0x80) {
+					lss_valid_count++;
+				}
 				break;
 			case 2:	// SR
 				c->data_register = (c->data_register >> 1) |

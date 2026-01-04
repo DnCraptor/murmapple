@@ -88,6 +88,28 @@ mii_bank_install_access_cb(
 		uint8_t page,
 		uint8_t end);
 
+#ifdef MII_RP2350
+// Ultra-fast inline peek for RP2350 - avoids function call overhead
+// Only works for banks without access callbacks (most common case)
+static inline uint8_t
+mii_bank_peek(
+		mii_bank_t *bank,
+		uint16_t addr)
+{
+	uint32_t phy = bank->mem_offset + addr - bank->base;
+	return bank->mem[phy];
+}
+
+static inline void
+mii_bank_poke(
+		mii_bank_t *bank,
+		uint16_t addr,
+		const uint8_t data)
+{
+	uint32_t phy = bank->mem_offset + addr - bank->base;
+	bank->mem[phy] = data;
+}
+#else
 static inline void
 mii_bank_poke(
 		mii_bank_t *bank,
@@ -106,3 +128,4 @@ mii_bank_peek(
 	mii_bank_read(bank, addr, &res, 1);
 	return res;
 }
+#endif

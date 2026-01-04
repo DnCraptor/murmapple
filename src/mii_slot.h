@@ -74,6 +74,8 @@ enum {
 	MII_SLOT_SSC_GET_TTY	= 0x11, // param is a mii_ssc_setconf_t
 	// + drive index 0..1. Param is a mii_floppy_t **
 	MII_SLOT_D2_GET_FLOPPY	= 0x40,
+	// Enable/disable boot signature (param is int* with 0=disable, 1=enable)
+	MII_SLOT_D2_SET_BOOT	= 0x41,
 };
 
 // send a command to a slot/driver. Return >=0 if ok, -1 if error

@@ -343,6 +343,12 @@ int disk_mount_to_emulator(int drive, mii_t *mii, int slot) {
     printf("Mounting %s to drive %d (format=%d, size=%lu)\n",
            disk->filename, drive + 1, file->format, file->size);
     
+    printf("Disk data in PSRAM: first 16 bytes = ");
+    for (int i = 0; i < 16; i++) {
+        printf("%02X ", disk->data[i]);
+    }
+    printf("\n");
+    
     // Initialize the floppy (clears all tracks)
     mii_floppy_init(floppy);
     
@@ -352,6 +358,19 @@ int disk_mount_to_emulator(int drive, mii_t *mii, int slot) {
         printf("Failed to load disk image to floppy: %d\n", res);
         return -1;
     }
+    
+    // Debug: check track 0 data after loading
+    printf("Track 0 bit_count: %d bits (%d bytes)\n", 
+           floppy->tracks[0].bit_count, floppy->tracks[0].bit_count / 8);
+    printf("Track 0 first 16 bytes: ");
+    for (int i = 0; i < 16; i++) {
+        printf("%02X ", floppy->track_data[0][i]);
+    }
+    printf("\n");
+    
+    // Enable the boot signature so the slot is now bootable
+    int enable = 1;
+    mii_slot_command(mii, slot, MII_SLOT_D2_SET_BOOT, &enable);
     
     printf("Disk %s mounted successfully to drive %d\n", disk->filename, drive + 1);
     return 0;

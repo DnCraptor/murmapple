@@ -153,6 +153,7 @@ static void process_keyboard(void) {
             }
             
             // Normal key - send to emulator
+            printf("  -> Sending to emulator: 0x%02X\n", key);
             mii_keypress(&g_mii, key);
         }
     }
@@ -349,6 +350,24 @@ int main() {
         printf("ERROR: Failed to install Disk II controller: %d\n", slot_res);
     } else {
         printf("Disk II controller installed in slot 6\n");
+        
+        // Debug: dump first few bytes of slot 6 ROM
+        mii_bank_t *card_rom = &g_mii.bank[MII_BANK_CARD_ROM];
+        printf("Card ROM bank: base=$%04X, mem=%p\n", card_rom->base, card_rom->mem);
+        printf("Slot 6 ROM at $C600: ");
+        for (int i = 0; i < 16; i++) {
+            printf("%02X ", mii_bank_peek(card_rom, 0xC600 + i));
+        }
+        printf("\n");
+        
+        // Debug: Check empty slot 2 area (should be all zeros)
+        printf("Slot 2 ROM at $C200: ");
+        for (int i = 0; i < 16; i++) {
+            printf("%02X ", mii_bank_peek(card_rom, 0xC200 + i));
+        }
+        printf("\n");
+        printf("Slot 2 signature bytes: $C205=%02X, $C207=%02X\n",
+               mii_bank_peek(card_rom, 0xC205), mii_bank_peek(card_rom, 0xC207));
     }
     
     // Initialize disk UI with emulator pointer (slot 6 is standard for Disk II)
@@ -415,36 +434,35 @@ int main() {
     printf("=================================\n\n");
     
     // Main emulation loop on core 0
-    const uint32_t cycles_per_frame = 17066; // 1023000 / 60
+    // Apple II runs at 1.023 MHz = 1,023,000 cycles/second
+    // At 60 FPS, that's 17050 cycles per frame (16.67ms)
+    const uint32_t cycles_per_frame = 17050;
     
     uint32_t frame_count = 0;
     uint32_t total_emu_time = 0;
-    uint32_t total_kbd_time = 0;
+    uint16_t last_pc = 0;
     
     while (1) {
+        uint32_t frame_start = time_us_32();
+        
         // Poll keyboard at start of frame
-        uint32_t kbd_start = time_us_32();
         ps2kbd_tick();
         process_keyboard();
-        uint32_t kbd_end = time_us_32();
-        total_kbd_time += (kbd_end - kbd_start);
         
-        // Run CPU for one frame
-        uint32_t emu_start = time_us_32();
+        // Run CPU for one frame worth of cycles
         mii_run_cycles(&g_mii, cycles_per_frame);
-        uint32_t emu_end = time_us_32();
-        total_emu_time += (emu_end - emu_start);
+        
+        uint32_t frame_end = time_us_32();
+        total_emu_time += (frame_end - frame_start);
         
         frame_count++;
         
-        // Print stats every 60 frames 
-        if ((frame_count % 60) == 0) {
-            uint32_t avg_emu_us = total_emu_time / 60;
-            uint32_t avg_kbd_us = total_kbd_time / 60;
-            printf("Frame %lu: emu=%lu us/frame, kbd=%lu us/frame (target: 16667), PC: $%04X\n", 
-                   frame_count, avg_emu_us, avg_kbd_us, g_mii.cpu.PC);
+        // Print stats every 300 frames (5 seconds) to reduce serial traffic
+        if ((frame_count % 300) == 0) {
+            uint32_t avg_emu_us = total_emu_time / 300;
+            printf("Frame %lu: %lu us/frame, PC: $%04X\n", 
+                   frame_count, avg_emu_us, g_mii.cpu.PC);
             total_emu_time = 0;
-            total_kbd_time = 0;
         }
     }
     

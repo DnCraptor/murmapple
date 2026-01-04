@@ -1376,7 +1376,9 @@ mii_video_render_text40_rp2350(
 	mii_video_t *video = &mii->video;
 	const uint8_t *char_rom = video->rom ? video->rom->rom : NULL;
 	
-	if (!char_rom) return;
+	if (!char_rom) {
+		return;
+	}
 	
 	// Text screen is 40x24 characters
 	// Each character is 7x8 pixels, but we render at 280x192 logical
@@ -1387,7 +1389,7 @@ mii_video_render_text40_rp2350(
 		uint16_t line_addr = 0x400 + (row & 7) * 0x80 + (row / 8) * 0x28;
 		
 		for (int col = 0; col < 40; col++) {
-			uint8_t c = mii_bank_peek(main_bank, line_addr + col);
+			uint8_t c = main_bank->mem[line_addr + col];  // Direct memory access
 			
 			// Flash handling: characters $40-$7F alternate with $00-$3F
 			// This matches the original emulator behavior
@@ -1434,6 +1436,125 @@ mii_video_render_text40_rp2350(
 	mii->video.frame_count++;
 }
 
+// Render bottom 4 text lines for mixed mode (lines 160-191 in Apple II coords)
+static void
+mii_video_render_text40_mixed_rp2350(
+		mii_t *mii,
+		uint8_t *fb,
+		int fb_width)
+{
+	mii_bank_t *main_bank = &mii->bank[MII_BANK_MAIN];
+	mii_video_t *video = &mii->video;
+	const uint8_t *char_rom = video->rom ? video->rom->rom : NULL;
+	
+	if (!char_rom) return;
+	
+	// In mixed mode, only render the bottom 4 text rows (rows 20-23)
+	// These correspond to Apple II lines 160-191
+	for (int row = 20; row < 24; row++) {
+		// Apple II text memory is interleaved
+		uint16_t line_addr = 0x400 + (row & 7) * 0x80 + (row / 8) * 0x28;
+		
+		for (int col = 0; col < 40; col++) {
+			uint8_t c = main_bank->mem[line_addr + col];
+			
+			// Flash handling
+			int flash = (mii->video.frame_count & 0x10) ? -0x40 : 0x40;
+			if (c >= 0x40 && c <= 0x7F) {
+				c = c + flash;
+			}
+			
+			const uint8_t *char_data = char_rom + (c << 3);
+			
+			for (int cy = 0; cy < 8; cy++) {
+				uint8_t bits = char_data[cy];
+				
+				int fb_y = 24 + row * 8 + cy;
+				if (fb_y >= 240) continue;
+				
+				int fb_x_base = col * 8;
+				
+				for (int cx = 0; cx < 7; cx++) {
+					bool pixel = (bits >> cx) & 1;
+					int fb_x = fb_x_base + cx;
+					if (fb_x < fb_width) {
+						fb[fb_y * fb_width + fb_x] = pixel ? 0 : 15;
+					}
+				}
+				int fb_x = fb_x_base + 7;
+				if (fb_x < fb_width) {
+					fb[fb_y * fb_width + fb_x] = 0;
+				}
+			}
+		}
+	}
+}
+
+// Render hi-res graphics to framebuffer
+static void
+mii_video_render_hires_rp2350(
+		mii_t *mii,
+		uint8_t *fb,
+		int fb_width)
+{
+	mii_bank_t *main_bank = &mii->bank[MII_BANK_MAIN];
+	uint8_t *mem = main_bank->mem;  // Direct memory access like original
+	
+	// Check PAGE2 switch to select which HGR page
+	uint32_t sw = mii->sw_state;
+	bool page2 = (sw & M_SWPAGE2) && !(sw & M_SW80STORE);
+	uint16_t base_addr = page2 ? 0x4000 : 0x2000;
+	
+	// HGR is 280x192, we render to 320x240 (offset of 24 lines vertically)
+	// Each byte contains 7 pixels + 1 palette bit (bit 7)
+	
+	for (int line = 0; line < 192; line++) {
+		// Apple II HGR line address calculation (same as original)
+		// Use the same formula as _mii_line_to_video_addr
+		uint16_t line_addr = base_addr + 
+			((line & 0x07) << 10) +     // (line % 8) * 1024
+			(((line >> 3) & 0x07) << 7) + // ((line / 8) % 8) * 128
+			((line >> 6) * 40);          // (line / 64) * 40
+		
+		int fb_y = 24 + line;  // 24 pixel vertical offset to center
+		if (fb_y >= 240) continue;
+		
+		uint8_t *fb_row = fb + fb_y * fb_width;
+		
+		for (int col = 0; col < 40; col++) {
+			// Direct memory access like original emulator
+			uint8_t byte = mem[line_addr + col];
+			
+			// Bit 7 determines color palette
+			bool palette = (byte >> 7) & 1;
+			
+			// 40 columns * 7 pixels = 280 pixels, scale to 320
+			// Simple approach: 8 pixels per column (320/40 = 8)
+			int fb_x_base = col * 8;
+			
+			// Render 7 pixels per byte (bits 0-6)
+			for (int bit = 0; bit < 7; bit++) {
+				bool pixel = (byte >> bit) & 1;
+				int fb_x = fb_x_base + bit;
+				
+				if (fb_x < fb_width) {
+					if (pixel) {
+						// White for now (simplified, proper color later)
+						fb_row[fb_x] = 15;  // White
+					} else {
+						fb_row[fb_x] = 0;  // Black
+					}
+				}
+			}
+			// 8th pixel column padding
+			int fb_x = fb_x_base + 7;
+			if (fb_x < fb_width) {
+				fb_row[fb_x] = 0;  // Black padding
+			}
+		}
+	}
+}
+
 // Render lo-res graphics to framebuffer
 static void
 mii_video_render_lores_rp2350(
@@ -1443,33 +1564,44 @@ mii_video_render_lores_rp2350(
 {
 	mii_bank_t *main_bank = &mii->bank[MII_BANK_MAIN];
 	
-	// Lo-res is 40x48 blocks, each block is 4 bits (16 colors)
-	// Screen memory is 40x24 bytes, each byte has top nibble (4 lines) and bottom nibble (4 lines)
+	// Lo-res is 40x48 blocks
+	// Screen memory is 40x24 bytes, each byte has:
+	//   - low nibble (bits 0-3): top half of block (4 scanlines)  
+	//   - high nibble (bits 4-7): bottom half of block (4 scanlines)
+	// So 24 rows of bytes = 48 rows of LORES blocks
+	// Each LORES block is 7 pixels wide x 4 scanlines tall on Apple II
+	// We scale to 320x240: 8 pixels wide x 5 scanlines tall
 	
-	for (int row = 0; row < 24; row++) {
-		uint16_t line_addr = 0x400 + (row & 7) * 0x80 + (row / 8) * 0x28;
+	// Check PAGE2 switch - Page 1 at $400, Page 2 at $800
+	bool page2 = !!(mii->sw_state & M_SWPAGE2);
+	uint16_t base_addr = page2 ? 0x800 : 0x400;
+	
+	// Direct memory access for speed
+	uint8_t *mem = main_bank->mem;
+	
+	for (int lores_row = 0; lores_row < 48; lores_row++) {
+		// Convert LORES row (0-47) to memory row (0-23) 
+		int mem_row = lores_row / 2;
+		int is_bottom_half = lores_row & 1;
+		
+		// Apple II screen memory address calculation
+		uint16_t line_addr = base_addr + (mem_row & 7) * 0x80 + (mem_row / 8) * 0x28;
+		
+		// Each LORES row maps to 5 framebuffer rows (48 * 5 = 240)
+		int fb_y_start = lores_row * 5;
 		
 		for (int col = 0; col < 40; col++) {
-			uint8_t byte = mii_bank_peek(main_bank, line_addr + col);
-			uint8_t color_top = byte & 0x0F;
-			uint8_t color_bot = (byte >> 4) & 0x0F;
+			uint8_t byte = mem[line_addr + col];  // Direct memory access
+			uint8_t color = is_bottom_half ? ((byte >> 4) & 0x0F) : (byte & 0x0F);
 			
-			// Each text row = 8 scanlines, split into two 4-line lores blocks
-			for (int cy = 0; cy < 8; cy++) {
-				uint8_t color = (cy < 4) ? color_top : color_bot;
-				
-				int fb_y = (row * 8 + cy) * 240 / 192;
-				if (fb_y >= 240) continue;
-				
-				int fb_x_base = col * 7 * 320 / 280;
-				uint8_t *fb_row = fb + fb_y * fb_width + fb_x_base;
-				
-				// Fill 7 pixels wide
-				for (int cx = 0; cx < 7; cx++) {
-					int fb_x = cx * 320 / 280;
-					if (fb_x_base + fb_x < fb_width) {
-						fb_row[fb_x] = color;
-					}
+			// Each LORES column maps to 8 framebuffer columns (40 * 8 = 320)
+			int fb_x_start = col * 8;
+			
+			// Fill the 8x5 pixel block
+			for (int dy = 0; dy < 5 && (fb_y_start + dy) < 240; dy++) {
+				uint8_t *fb_row = fb + (fb_y_start + dy) * fb_width + fb_x_start;
+				for (int dx = 0; dx < 8; dx++) {
+					fb_row[dx] = color;
 				}
 			}
 		}
@@ -1495,17 +1627,36 @@ mii_video_scale_to_hdmi(
 	mii_t *mii = (mii_t *)((char*)video - offsetof(mii_t, video));
 	
 	uint32_t sw = mii->sw_state;
-	bool text_mode = (sw & M_SWTEXT);
-	bool mixed = (sw & M_SWMIXED);
-	bool hires = (sw & M_SWHIRES);
-	bool page2 = (sw & M_SWPAGE2);
+	bool text_mode = !!(sw & M_SWTEXT);
+	bool mixed = !!(sw & M_SWMIXED);
+	bool hires = !!(sw & M_SWHIRES);
+	bool page2 = !!(sw & M_SWPAGE2);
 	
-	// For now, render 40-column text mode
-	if (text_mode || (!hires)) {
-		mii_video_render_text40_rp2350(mii, hdmi_buffer, 320);
+	// Debug video mode periodically
+	static int last_mode = -1;
+	int cur_mode = (text_mode ? 1 : 0) | (hires ? 2 : 0) | (mixed ? 4 : 0) | (page2 ? 8 : 0);
+	if (cur_mode != last_mode) {
+		last_mode = cur_mode;
+		printf("VIDEO: text=%d hires=%d mixed=%d page2=%d -> %s\n", 
+			text_mode, hires, mixed, page2,
+			text_mode ? "TEXT" : (hires ? (mixed ? "HGR+MIXED" : "HGR") : "LORES"));
 	}
 	
-	// TODO: Add hi-res and double hi-res rendering
+	if (text_mode) {
+		// Pure text mode
+		mii_video_render_text40_rp2350(mii, hdmi_buffer, 320);
+	} else if (hires) {
+		// Hi-res graphics mode
+		mii_video_render_hires_rp2350(mii, hdmi_buffer, 320);
+		if (mixed) {
+			// Mixed mode: render bottom 4 text lines (lines 160-191)
+			// This overlays text on top of the HGR screen
+			mii_video_render_text40_mixed_rp2350(mii, hdmi_buffer, 320);
+		}
+	} else {
+		// Lo-res graphics mode
+		mii_video_render_lores_rp2350(mii, hdmi_buffer, 320);
+	}
 }
 
 #endif // MII_RP2350

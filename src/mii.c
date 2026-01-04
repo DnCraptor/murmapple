@@ -677,6 +677,7 @@ static const unsigned __int128 _mii_ramworks3_config[] = {
 static uint8_t rp2350_main_mem[0x10000];  // 64KB main memory
 static uint8_t rp2350_aux_mem[0xD000];    // 52KB aux memory
 static uint8_t rp2350_sw_mem[256];        // Soft switch area
+static uint8_t rp2350_card_rom[0x0F00];   // Card ROM area ($C100-$CFFF = 15 pages)
 
 void
 mii_init(
@@ -710,6 +711,10 @@ mii_init(
 	
 	mii->bank[MII_BANK_SW].mem = rp2350_sw_mem;
 	mii->bank[MII_BANK_SW].no_alloc = 1;
+	
+	// Card ROM bank for slot ROMs ($C100-$CFFF)
+	mii->bank[MII_BANK_CARD_ROM].mem = rp2350_card_rom;
+	mii->bank[MII_BANK_CARD_ROM].no_alloc = 1;
 
 	// Initialize banks (won't allocate since no_alloc is set)
 	printf("  mii_init: initializing bank memory...\n");
@@ -721,6 +726,8 @@ mii_init(
 	memset(rp2350_aux_mem, 0, sizeof(rp2350_aux_mem));
 	printf("    Clearing soft switch area\n");
 	memset(rp2350_sw_mem, 0, sizeof(rp2350_sw_mem));
+	printf("    Clearing card ROM area\n");
+	memset(rp2350_card_rom, 0, sizeof(rp2350_card_rom));
 
 	mii->cpu.trap = MII_TRAP;
 	
@@ -890,6 +897,36 @@ mii_mem_access(
 {
 	if (!do_sw && addr >= 0xc000 && addr <= 0xc0ff && addr != 0xcfff)
 		return;
+	
+#ifdef MII_RP2350
+	// Fast path: check address range first to minimize function calls
+	// Slot I/O: $C090-$C0FF - most frequent during disk access
+	if (addr >= 0xc090 && addr <= 0xc0ff) {
+		int slot = ((addr >> 4) & 7) - 1;
+		if (mii->slot[slot].drv) {
+			uint8_t on = mii->slot[slot].drv->access(mii,
+						&mii->slot[slot], addr, *d, wr);
+			if (!wr)
+				*d = on;
+		}
+		return;
+	}
+	
+	// Keyboard: $C000-$C01F  
+	uint8_t low = addr & 0xff;
+	if (low <= 0x1f) {
+		if (mii_access_keyboard(mii, addr, d, wr))
+			return;
+	}
+	
+	// Check other handlers
+	uint8_t done =
+		_mii_deselect_cXrom(mii, addr, d, wr) ||
+		mii_access_video(mii, addr, d, wr) ||
+		mii_access_soft_switches(mii, addr, d, wr);
+	if (done)
+		return;
+#else
 	uint8_t done =
 		_mii_deselect_cXrom(mii, addr, d, wr) ||
 		mii_access_keyboard(mii, addr, d, wr) ||
@@ -897,6 +934,8 @@ mii_mem_access(
 		mii_access_soft_switches(mii, addr, d, wr);
 	if (done)
 		return;
+#endif
+
 	uint8_t page = addr >> 8;
 	if (wr) {
 		uint8_t m = mii->mem[page].write;
@@ -904,9 +943,6 @@ mii_mem_access(
 		if (!b->ro)
 			mii_bank_write(b, addr, d, 1);
 		else {
-			// writing to ROM *is* sort of OK in certain circumstances, if
-			// there is a 'special' handler of the rom page. the NSC and the
-			// mockinboard are examples of this.
 			mii_bank_access(b, addr, d, 1, true);
 		}
 	} else {
@@ -1001,11 +1037,31 @@ mii_timer_set(
 	return 0;
 }
 
-static void
+void
 mii_timer_run(
 		mii_t *mii,
 		uint64_t cycles)
 {
+#ifdef MII_RP2350
+	// Optimized timer loop - unrolled for first 8 timers (most common case)
+	// Avoids expensive ffsll() call on ARM
+	uint64_t timer = mii->timer.map;
+	if (!timer) return;
+	
+	for (int i = 0; i < 8 && timer; i++) {
+		if (timer & (1ull << i)) {
+			timer &= ~(1ull << i);
+			if (mii->timer.timers[i].when > 0) {
+				mii->timer.timers[i].when -= cycles;
+				if (mii->timer.timers[i].when <= 0) {
+					if (mii->timer.timers[i].cb)
+						mii->timer.timers[i].when += mii->timer.timers[i].cb(mii,
+								mii->timer.timers[i].param);
+				}
+			}
+		}
+	}
+#else
 	uint64_t timer = mii->timer.map;
 	while (timer) {
 		int i = ffsll(timer) - 1;
@@ -1019,6 +1075,7 @@ mii_timer_run(
 			}
 		}
 	}
+#endif
 }
 
 uint8_t
@@ -1084,8 +1141,9 @@ mii_irq_clear(
  * Optimizations:
  * 1. No debug/breakpoint support (saves loop iteration)
  * 2. No trace logging (saves memory writes)
- * 3. Timer run only every N cycles (batched)
- * 4. Fast path for non-I/O addresses (direct memory access)
+ * 3. Timer run batched every N cycles
+ * 4. Fast path for RAM and ROM (direct memory access)
+ * 5. Only I/O ($C000-$C0FF) goes through slow path
  */
 static mii_cpu_state_t
 _mii_cpu_direct_access_cb(
@@ -1098,8 +1156,20 @@ _mii_cpu_direct_access_cb(
 	const uint16_t addr = access.addr;
 	const uint8_t page = addr >> 8;
 	
-	// Fast path for non-I/O memory (vast majority of accesses)
-	if (likely(page < 0xC0)) {
+	// Timers are run from inline macros in mii_65c02.c for direct access mode
+	// Only run here if we somehow got called through the callback
+#if !MII_65C02_DIRECT_ACCESS || !MII_RP2350
+	uint64_t total = mii->cpu.total_cycle + mii->cpu.cycle;
+	uint64_t last = mii->timer.last_run;
+	if (total - last >= 8) {
+		mii_timer_run(mii, total - last);
+		mii->timer.last_run = total;
+	}
+#endif
+	
+	// Fast path for non-I/O memory (RAM < $C000 or ROM $C100-$FFFF)
+	// Only $C000-$C0FF is I/O that needs special handling
+	if (likely(page != 0xC0)) {
 		if (access.w) {
 			// Write
 			uint8_t m = mii->mem[page].write;
@@ -1118,15 +1188,7 @@ _mii_cpu_direct_access_cb(
 			mii->cpu_state.data = b->mem[phy];
 		}
 	} else {
-		// Slow path for I/O and ROM ($C000-$FFFF)
-		// Run timers on I/O access (less frequent but still correct)
-		uint8_t cycle = mii->timer.last_cycle;
-		if (mii->cpu.cycle != cycle) {
-			mii_timer_run(mii, mii->cpu.cycle > cycle ? 
-				mii->cpu.cycle - cycle : mii->cpu.cycle);
-			mii->timer.last_cycle = mii->cpu.cycle;
-		}
-		
+		// Slow path for I/O only ($C000-$C0FF)
 		mii_mem_access(mii, addr, &mii->cpu_state.data, access.w, true);
 	}
 	
@@ -1145,11 +1207,12 @@ _mii_cpu_direct_access_cb(
 	mii_t *mii = cpu->access_param;
 
 	mii->cpu_state = access;
-	uint8_t cycle = mii->timer.last_cycle;
-	mii_timer_run(mii,
-				mii->cpu.cycle > cycle ? mii->cpu.cycle - cycle :
-					mii->cpu.cycle);
-	mii->timer.last_cycle = mii->cpu.cycle;
+	uint64_t total = mii->cpu.total_cycle + mii->cpu.cycle;
+	uint64_t last = mii->timer.last_run;
+	if (total - last >= 1) {
+		mii_timer_run(mii, total - last);
+		mii->timer.last_run = total;
+	}
 
 	const uint16_t addr = access.addr;
 	int wr = access.w;
@@ -1305,12 +1368,14 @@ mii_run_cycles(
 		mii_t *mii,
 		uint32_t cycles)
 {
-	uint32_t target_cycle = (uint32_t)mii->cpu.total_cycle + cycles;
+	uint64_t target_cycle = mii->cpu.total_cycle + cycles;
 	
-	// Set instruction_run high to let CPU run many instructions before returning
-	mii->cpu.instruction_run = 100000;
-	
-	while ((uint32_t)mii->cpu.total_cycle < target_cycle && mii->state == MII_RUNNING) {
+	while (mii->cpu.total_cycle < target_cycle && mii->state == MII_RUNNING) {
+		// Set instruction_run to approximate cycles we need (avg ~3 cycles/instruction)
+		// This limits overshoot while still batching instructions
+		uint64_t remaining = target_cycle - mii->cpu.total_cycle;
+		mii->cpu.instruction_run = (remaining < 300) ? (remaining / 3) + 1 : 100;
+		
 		mii->cpu_state = mii_cpu_run(&mii->cpu, mii->cpu_state);
 		
 		if (unlikely(mii->cpu_state.trap)) {

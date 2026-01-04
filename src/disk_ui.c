@@ -266,6 +266,9 @@ bool disk_ui_handle_key(uint8_t key) {
                     if (g_mii) {
                         if (disk_mount_to_emulator(selected_drive, g_mii, g_disk2_slot) == 0) {
                             printf("Disk UI: disk mounted successfully\n");
+                            // Reset the CPU so it can boot from the new disk
+                            printf("Disk UI: resetting CPU for disk boot\n");
+                            mii_reset(g_mii, true);
                         } else {
                             printf("Disk UI: failed to mount disk to emulator\n");
                         }

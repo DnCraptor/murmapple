@@ -142,7 +142,7 @@ typedef struct mii_t {
 	struct {
 		uint64_t 	map;
 #if MII_65C02_DIRECT_ACCESS
-		uint8_t		last_cycle;
+		uint64_t	last_run;	// last total_cycle when timer_run was called
 #endif
 		struct {
 			mii_timer_p 		cb;
