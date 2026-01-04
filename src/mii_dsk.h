@@ -15,6 +15,17 @@ int
 mii_floppy_dsk_load(
 		mii_floppy_t *f,
 		mii_dd_file_t *file );
+
+// Render one 256-byte sector into the on-disk bitstream for a track.
+// Exposed so platforms without mmap/PSRAM staging can stream-load images.
+void
+mii_floppy_dsk_render_sector(
+		uint8_t vol,
+		uint8_t track,
+		uint8_t sector,
+		const uint8_t *data,
+		mii_floppy_track_t *dst,
+		uint8_t *track_data);
 void
 _mii_floppy_dsk_write_sector(
 		mii_dd_file_t *file,

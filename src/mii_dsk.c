@@ -129,7 +129,7 @@ mii_floppy_decode_sector(
 // This function is derived from Scullin Steel Co.'s apple2js code
 // https://github.com/whscullin/apple2js/blob/e280c3d/js/formats/format_utils.ts#L140
 /* Further recycled for MII .DSK decoding, using 10 bits sync words etc. */
-static void
+void
 mii_floppy_dsk_render_sector(
 		uint8_t vol, uint8_t track, uint8_t sector,
 		const uint8_t *data,
@@ -171,7 +171,7 @@ mii_floppy_dsk_render_sector(
 //			dst->bit_count % 8 == 0 ? "" : "NOT BYTE ALIGNED");
 	// Data Field
 	mii_floppy_write_track_bits(dst, track_data, 0xd5aaad, 24);
-	uint8_t nibbles[0x156] = {};
+	uint8_t nibbles[0x158] = {};
 	const unsigned ptr2 = 0;
 	const unsigned ptr6 = 0x56;
 
@@ -209,6 +209,7 @@ _mii_floppy_dsk_write_sector(
 		uint8_t sector,
 		uint8_t data_sector[342 + 1] )
 {
+	(void)track_data;
 	uint8_t data[256];
 
 	int errors = mii_floppy_decode_sector(data_sector, data);
@@ -253,8 +254,10 @@ mii_floppy_dsk_load(
 			dst->map.sector[phys_sector].dsk_position = off;
 		}
 		if (i == 0)
-			printf("%s: track %2d has %d bits %d bytes\n",
-					__func__, i, dst->bit_count, dst->bit_count >> 3);
+			printf("%s: track %2d has %u bits %u bytes\n",
+					__func__, i,
+					(unsigned)dst->bit_count,
+					(unsigned)(dst->bit_count >> 3));
 	}
 	// DSK is read only
 //	f->write_protected |= MII_FLOPPY_WP_RO_FORMAT;

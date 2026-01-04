@@ -17,9 +17,9 @@
 #include "mii_dd.h"
 #include "mii_floppy.h"
 #include "mii_slot.h"
-
-// PSRAM base address
-#define PSRAM_BASE 0x11000000
+#include "mii_dsk.h"
+#include "mii_nib.h"
+#include "mii_woz.h"
 
 // Global state
 disk_entry_t g_disk_list[MAX_DISK_IMAGES];
@@ -30,34 +30,267 @@ loaded_disk_t g_loaded_disks[2] = {0};
 static FATFS fs;
 static bool sd_mounted = false;
 
-// PSRAM allocation tracking (simple bump allocator)
-static uint32_t psram_offset = 0;
-#define PSRAM_SIZE (8 * 1024 * 1024)  // 8MB PSRAM
+// Endian conversion macros for little-endian platforms (ARM is LE)
+#ifndef le32toh
+#define le32toh(x) (x)
+#define htole32(x) (x)
+#define le16toh(x) (x)
+#define htole16(x) (x)
+#endif
 
-// Allocate memory from PSRAM
-static uint8_t *psram_alloc(uint32_t size) {
-    // Align to 4 bytes
-    size = (size + 3) & ~3;
-    
-    if (psram_offset + size > PSRAM_SIZE) {
-        printf("PSRAM allocation failed: need %lu, have %lu\n", 
-               size, PSRAM_SIZE - psram_offset);
-        return NULL;
+static bool disk_open_image_file(const char *filename, FIL *out_fp, char *out_path, size_t out_path_len) {
+    if (!sd_mounted)
+        return false;
+    if (!filename || !out_fp)
+        return false;
+
+    char path[128];
+    snprintf(path, sizeof(path), "/apple/%s", filename);
+    FRESULT fr = f_open(out_fp, path, FA_READ);
+    if (fr != FR_OK) {
+        snprintf(path, sizeof(path), "/%s", filename);
+        fr = f_open(out_fp, path, FA_READ);
+        if (fr != FR_OK)
+            return false;
     }
-    
-    uint8_t *ptr = (uint8_t *)(PSRAM_BASE + psram_offset);
-    psram_offset += size;
-    printf("PSRAM allocated %lu bytes at %p (total used: %lu)\n", 
-           size, ptr, psram_offset);
-    return ptr;
+    if (out_path && out_path_len) {
+        strncpy(out_path, path, out_path_len - 1);
+        out_path[out_path_len - 1] = '\0';
+    }
+    return true;
 }
 
-// Free PSRAM (simple: just reset if both drives empty)
-static void psram_free(uint8_t *ptr) {
-    // Simple allocator - we can only "free" by resetting if both drives are empty
-    if (!g_loaded_disks[0].loaded && !g_loaded_disks[1].loaded) {
-        psram_offset = 0;
+//  DOS 3.3 Physical sector order (index is physical sector, value is DOS sector)
+static const uint8_t DO_SECMAP[16] = {
+    0x0, 0x7, 0xE, 0x6, 0xD, 0x5, 0xC, 0x4,
+    0xB, 0x3, 0xA, 0x2, 0x9, 0x1, 0x8, 0xF
+};
+// ProDOS Physical sector order (index is physical sector, value is ProDOS sector)
+static const uint8_t PO_SECMAP[16] = {
+    0x0, 0x8, 0x1, 0x9, 0x2, 0xa, 0x3, 0xb,
+    0x4, 0xc, 0x5, 0xd, 0x6, 0xe, 0x7, 0xf
+};
+
+#define DSK_SECTOR_SIZE 256
+#define DSK_TRACKS 35
+#define DSK_SECTORS 16
+#define DSK_TRACK_BYTES (DSK_SECTOR_SIZE * DSK_SECTORS)
+
+static inline uint16_t disk_le16(const void *p) {
+	const uint8_t *b = (const uint8_t *)p;
+	return (uint16_t)b[0] | ((uint16_t)b[1] << 8);
+}
+
+static int disk_load_floppy_dsk_from_fatfs(mii_floppy_t *floppy, mii_dd_file_t *file, FIL *fp) {
+    const char *dot = strrchr(file->pathname, '.');
+    const uint8_t *secmap = DO_SECMAP;
+    if (dot && (!strcasecmp(dot, ".po") || !strcasecmp(dot, ".PO"))) {
+        secmap = PO_SECMAP;
     }
+
+    for (int track = 0; track < DSK_TRACKS; ++track) {
+        mii_floppy_track_t *dst = &floppy->tracks[track];
+        uint8_t *track_data = floppy->track_data[track];
+        dst->bit_count = 0;
+        dst->virgin = 0;
+        dst->has_map = 1;
+
+        for (int phys_sector = 0; phys_sector < DSK_SECTORS; phys_sector++) {
+            uint8_t sector_buf[DSK_SECTOR_SIZE];
+            const uint8_t dos_sector = secmap[phys_sector];
+            const uint32_t off = (uint32_t)((DSK_SECTORS * track + dos_sector) * DSK_SECTOR_SIZE);
+
+            FRESULT fr = f_lseek(fp, off);
+            if (fr != FR_OK) {
+                printf("%s: f_lseek(%lu) failed: %d\n", __func__, (unsigned long)off, fr);
+                return -1;
+            }
+            UINT br = 0;
+            fr = f_read(fp, sector_buf, sizeof(sector_buf), &br);
+            if (fr != FR_OK || br != sizeof(sector_buf)) {
+                printf("%s: f_read sector failed: fr=%d br=%u\n", __func__, fr, br);
+                return -1;
+            }
+
+            // Volume number is 254, as in mii_dsk.c
+            mii_floppy_dsk_render_sector(254, (uint8_t)track, (uint8_t)phys_sector, sector_buf, dst, track_data);
+            dst->map.sector[phys_sector].dsk_position = off;
+        }
+    }
+    return 0;
+}
+
+static int disk_load_floppy_nib_from_fatfs(mii_floppy_t *floppy, FIL *fp) {
+    uint8_t *track_buf = (uint8_t *)malloc(6656);
+    if (!track_buf) {
+        printf("%s: out of memory\n", __func__);
+        return -1;
+    }
+    for (int track = 0; track < 35; track++) {
+        const uint32_t off = (uint32_t)(track * 6656);
+        FRESULT fr = f_lseek(fp, off);
+        if (fr != FR_OK) {
+            printf("%s: f_lseek(%lu) failed: %d\n", __func__, (unsigned long)off, fr);
+            free(track_buf);
+            return -1;
+        }
+        UINT br = 0;
+        fr = f_read(fp, track_buf, 6656, &br);
+        if (fr != FR_OK || br != 6656) {
+            printf("%s: f_read track failed: fr=%d br=%u\n", __func__, fr, br);
+            free(track_buf);
+            return -1;
+        }
+        mii_floppy_nib_render_track(track_buf, &floppy->tracks[track], floppy->track_data[track]);
+        if (floppy->tracks[track].bit_count < 100) {
+            printf("%s: invalid NIB track %d\n", __func__, track);
+            free(track_buf);
+            return -1;
+        }
+        floppy->tracks[track].dirty = 0;
+    }
+    free(track_buf);
+    return 0;
+}
+
+static bool disk_woz_chunk_id_is(const mii_woz_chunk_t *chunk, const char id[4]) {
+    return chunk && memcmp((const void *)&chunk->id_le, id, 4) == 0;
+}
+
+static int disk_load_floppy_woz_from_fatfs(mii_floppy_t *floppy, FIL *fp) {
+	// Read header magic
+	uint8_t magic[4];
+	FRESULT fr = f_lseek(fp, 0);
+	if (fr != FR_OK)
+		return -1;
+	UINT br = 0;
+	fr = f_read(fp, magic, sizeof(magic), &br);
+	if (fr != FR_OK || br != sizeof(magic))
+		return -1;
+
+	bool is_woz2 = (memcmp(magic, "WOZ2", 4) == 0);
+	bool is_woz1 = (memcmp(magic, "WOZ", 3) == 0 && !is_woz2);
+	if (!is_woz2 && !is_woz1) {
+		printf("%s: not a WOZ file\n", __func__);
+		return -1;
+	}
+
+	// Scan chunks (WOZ chunk ordering is not guaranteed)
+	const uint32_t file_size = (uint32_t)f_size(fp);
+	uint32_t tmap_payload_off = 0, tmap_payload_size = 0;
+	uint32_t trks_payload_off = 0, trks_payload_size = 0;
+
+	uint32_t off = (uint32_t)sizeof(mii_woz_header_t);
+	mii_woz_chunk_t chunk;
+	while (off + sizeof(chunk) <= file_size) {
+		fr = f_lseek(fp, off);
+		if (fr != FR_OK)
+			return -1;
+		br = 0;
+		fr = f_read(fp, &chunk, sizeof(chunk), &br);
+		if (fr != FR_OK || br != sizeof(chunk))
+			return -1;
+		const uint32_t size = le32toh(chunk.size_le);
+		const uint32_t payload_off = off + (uint32_t)sizeof(chunk);
+		if (payload_off + size > file_size)
+			break;
+		if (disk_woz_chunk_id_is(&chunk, "TMAP")) {
+			tmap_payload_off = payload_off;
+			tmap_payload_size = size;
+		} else if (disk_woz_chunk_id_is(&chunk, "TRKS")) {
+			trks_payload_off = payload_off;
+			trks_payload_size = size;
+		}
+		off = payload_off + size;
+	}
+
+	if (!tmap_payload_off || !trks_payload_off) {
+		printf("%s: missing required chunks (TMAP/TRKS)\n", __func__);
+		return -1;
+	}
+
+	// Read TMAP
+	uint8_t tmap_track_id[160];
+	if (tmap_payload_size < sizeof(tmap_track_id)) {
+        printf("%s: TMAP too small (%lu)\n", __func__, (unsigned long)tmap_payload_size);
+		return -1;
+	}
+	fr = f_lseek(fp, tmap_payload_off);
+	if (fr != FR_OK)
+		return -1;
+	br = 0;
+	fr = f_read(fp, tmap_track_id, sizeof(tmap_track_id), &br);
+	if (fr != FR_OK || br != sizeof(tmap_track_id))
+		return -1;
+
+	uint64_t used_tracks = 0;
+	for (int ti = 0; ti < (int)sizeof(floppy->track_id) && ti < (int)sizeof(tmap_track_id); ti++) {
+		uint8_t tid = tmap_track_id[ti];
+		floppy->track_id[ti] = (tid == 0xff) ? MII_FLOPPY_NOISE_TRACK : tid;
+		if (tid != 0xff && tid < 64)
+			used_tracks |= (1ULL << tid);
+	}
+
+	// Load tracks from TRKS
+	fr = f_lseek(fp, trks_payload_off);
+	if (fr != FR_OK)
+		return -1;
+
+	if (is_woz2) {
+		// Track entries (160)
+		struct {
+			uint16_t start_block_le;
+			uint16_t block_count_le;
+			uint32_t bit_count_le;
+		} track[160];
+		br = 0;
+		fr = f_read(fp, track, sizeof(track), &br);
+		if (fr != FR_OK || br != sizeof(track))
+			return -1;
+		for (int i = 0; i < MII_FLOPPY_TRACK_COUNT; i++) {
+			if (!(used_tracks & (1ULL << i)))
+				continue;
+			const uint32_t bit_count = le32toh(track[i].bit_count_le);
+			const uint32_t byte_count = (bit_count + 7) >> 3;
+			const uint32_t start_byte = (uint32_t)(le16toh(track[i].start_block_le) << 9);
+			if (byte_count > MII_FLOPPY_MAX_TRACK_SIZE) {
+                printf("%s: WOZ2 track %d too large (%lu bytes)\n", __func__, i, (unsigned long)byte_count);
+				return -1;
+			}
+			fr = f_lseek(fp, start_byte);
+			if (fr != FR_OK)
+				return -1;
+			br = 0;
+			fr = f_read(fp, floppy->track_data[i], byte_count, &br);
+			if (fr != FR_OK || br != byte_count)
+				return -1;
+			floppy->tracks[i].virgin = 0;
+			floppy->tracks[i].bit_count = bit_count;
+		}
+		return 2;
+	} else {
+		// WOZ1 TRKS payload is 35 fixed-size track entries (6656 bytes)
+		for (int i = 0; i < 35 && i < MII_FLOPPY_TRACK_COUNT; i++) {
+			uint8_t entry[6656];
+			br = 0;
+			fr = f_read(fp, entry, sizeof(entry), &br);
+			if (fr != FR_OK || br != sizeof(entry))
+				return -1;
+			if (!(used_tracks & (1ULL << i)))
+				continue;
+			// Layout: bits[6646] then byte_count_le at offset 6646
+			const uint16_t byte_count = disk_le16(entry + 6646);
+			const uint16_t bit_count = disk_le16(entry + 6648);
+			if (byte_count > MII_FLOPPY_MAX_TRACK_SIZE) {
+				printf("%s: WOZ1 track %d too large (%u bytes)\n", __func__, i, byte_count);
+				return -1;
+			}
+			floppy->tracks[i].virgin = 0;
+			memcpy(floppy->track_data[i], entry, byte_count);
+			floppy->tracks[i].bit_count = bit_count;
+		}
+		return 1;
+	}
 }
 
 // Get disk type from filename extension
@@ -157,7 +390,7 @@ int disk_scan_directory(void) {
     return g_disk_count;
 }
 
-// Load a disk image from SD card to PSRAM
+// Select a disk image for a drive (image is read from SD on mount)
 int disk_load_image(int drive, int index) {
     if (drive < 0 || drive > 1) {
         printf("Invalid drive: %d\n", drive);
@@ -168,58 +401,30 @@ int disk_load_image(int drive, int index) {
         return -1;
     }
     
-    // Unload existing image
-    disk_unload_image(drive);
-    
     disk_entry_t *entry = &g_disk_list[index];
     loaded_disk_t *disk = &g_loaded_disks[drive];
-    
-    // Construct path
-    char path[128];
-    snprintf(path, sizeof(path), "/apple/%s", entry->filename);
-    
-    printf("Loading %s to drive %d...\n", path, drive + 1);
-    
-    // Open file
+
+    // Clear previous selection
+    memset(disk, 0, sizeof(*disk));
+
+    // Validate the file exists by opening it, then close immediately.
     FIL fp;
-    FRESULT fr = f_open(&fp, path, FA_READ);
-    if (fr != FR_OK) {
-        // Try without /apple prefix
-        snprintf(path, sizeof(path), "/%s", entry->filename);
-        fr = f_open(&fp, path, FA_READ);
-        if (fr != FR_OK) {
-            printf("Failed to open %s: %d\n", path, fr);
-            return -1;
-        }
-    }
-    
-    // Allocate PSRAM
-    disk->data = psram_alloc(entry->size);
-    if (!disk->data) {
-        f_close(&fp);
+    char path[128];
+    if (!disk_open_image_file(entry->filename, &fp, path, sizeof(path))) {
+        printf("Failed to open image for %s\n", entry->filename);
         return -1;
     }
-    
-    // Read file
-    UINT br;
-    fr = f_read(&fp, disk->data, entry->size, &br);
     f_close(&fp);
-    
-    if (fr != FR_OK || br != entry->size) {
-        printf("Failed to read %s: fr=%d, read=%u, expected=%lu\n", 
-               path, fr, br, entry->size);
-        return -1;
-    }
-    
-    // Update loaded disk info
+
+    // Update selected disk info (no PSRAM staging)
     disk->size = entry->size;
     disk->type = entry->type;
     strncpy(disk->filename, entry->filename, MAX_FILENAME_LEN - 1);
     disk->filename[MAX_FILENAME_LEN - 1] = '\0';
     disk->loaded = true;
     disk->write_back = false;
-    
-    printf("Loaded %s to drive %d (%lu bytes)\n", entry->filename, drive + 1, entry->size);
+
+    printf("Selected %s for drive %d (%lu bytes)\n", entry->filename, drive + 1, (unsigned long)entry->size);
     
     return 0;
 }
@@ -231,16 +436,8 @@ void disk_unload_image(int drive) {
     loaded_disk_t *disk = &g_loaded_disks[drive];
     
     if (!disk->loaded) return;
-    
-    // Write back if modified
-    if (disk->write_back) {
-        disk_writeback(drive);
-    }
-    
-    // Free PSRAM (simplified - just mark as unloaded)
-    psram_free(disk->data);
-    disk->data = NULL;
-    disk->loaded = false;
+
+    memset(disk, 0, sizeof(*disk));
     
     printf("Unloaded drive %d\n", drive + 1);
 }
@@ -248,37 +445,8 @@ void disk_unload_image(int drive) {
 // Write back modified disk image to SD card
 int disk_writeback(int drive) {
     if (drive < 0 || drive > 1) return -1;
-    
-    loaded_disk_t *disk = &g_loaded_disks[drive];
-    
-    if (!disk->loaded || !disk->write_back) return 0;
-    
-    char path[128];
-    snprintf(path, sizeof(path), "/apple/%s", disk->filename);
-    
-    printf("Writing back %s...\n", path);
-    
-    FIL fp;
-    FRESULT fr = f_open(&fp, path, FA_WRITE);
-    if (fr != FR_OK) {
-        printf("Failed to open %s for write: %d\n", path, fr);
-        return -1;
-    }
-    
-    UINT bw;
-    fr = f_write(&fp, disk->data, disk->size, &bw);
-    f_close(&fp);
-    
-    if (fr != FR_OK || bw != disk->size) {
-        printf("Failed to write %s: fr=%d, wrote=%u, expected=%lu\n", 
-               path, fr, bw, disk->size);
-        return -1;
-    }
-    
-    disk->write_back = false;
-    printf("Written %s (%lu bytes)\n", disk->filename, disk->size);
-    
-    return 0;
+    printf("%s: writeback not supported in no-PSRAM loader\n", __func__);
+    return -1;
 }
 
 // Convert our disk_type_t to mii_dd format enum
@@ -313,7 +481,7 @@ int disk_mount_to_emulator(int drive, mii_t *mii, int slot) {
     }
     
     loaded_disk_t *disk = &g_loaded_disks[drive];
-    if (!disk->loaded || !disk->data) {
+    if (!disk->loaded || !disk->filename[0]) {
         printf("No disk loaded in drive %d\n", drive + 1);
         return -1;
     }
@@ -329,44 +497,57 @@ int disk_mount_to_emulator(int drive, mii_t *mii, int slot) {
     mii_floppy_t *floppy = floppies[drive];
     mii_dd_file_t *file = &g_dd_files[drive];
     
-    // Set up the mii_dd_file_t structure pointing to PSRAM data
+    // Set up the mii_dd_file_t structure (no file->map backing on RP2350)
     memset(file, 0, sizeof(*file));
     file->pathname = disk->filename;  // Just point to our filename
     file->format = disk_type_to_mii_format(disk->type, disk->filename);
-    file->read_only = 0;  // Allow writes (will be stored in PSRAM)
-    file->start = disk->data;
-    file->map = disk->data;
-    file->fd = -1;  // No file descriptor (memory-mapped from PSRAM)
+    file->read_only = 1;  // Read-only: no in-memory backing for writes
+    file->start = NULL;
+    file->map = NULL;
+    file->fd = -1;
     file->size = disk->size;
     file->dd = NULL;  // Not associated with a specific mii_dd_t
     
-    printf("Mounting %s to drive %d (format=%d, size=%lu)\n",
-           disk->filename, drive + 1, file->format, file->size);
-    
-    printf("Disk data in PSRAM: first 16 bytes = ");
-    for (int i = 0; i < 16; i++) {
-        printf("%02X ", disk->data[i]);
+        printf("Mounting %s to drive %d (format=%d, size=%lu)\n",
+            disk->filename, drive + 1, file->format, (unsigned long)file->size);
+
+    // Open the image on SD
+    FIL fp;
+    char path[128];
+    if (!disk_open_image_file(disk->filename, &fp, path, sizeof(path))) {
+        printf("Failed to open disk image %s\n", disk->filename);
+        return -1;
     }
-    printf("\n");
+    printf("Reading disk from SD: %s\n", path);
     
     // Initialize the floppy (clears all tracks)
     mii_floppy_init(floppy);
-    
-    // Load the disk image into the floppy structure
-    res = mii_floppy_load(floppy, file);
+
+    // Load the disk image into the floppy structure without PSRAM staging
+    res = -1;
+    switch (file->format) {
+        case MII_DD_FILE_DSK:
+        case MII_DD_FILE_DO:
+        case MII_DD_FILE_PO:
+            res = disk_load_floppy_dsk_from_fatfs(floppy, file, &fp);
+            break;
+        case MII_DD_FILE_NIB:
+            res = disk_load_floppy_nib_from_fatfs(floppy, &fp);
+            break;
+        case MII_DD_FILE_WOZ:
+            res = disk_load_floppy_woz_from_fatfs(floppy, &fp);
+            break;
+        default:
+            printf("%s: unsupported format %d\n", __func__, file->format);
+            res = -1;
+            break;
+    }
+    f_close(&fp);
+
     if (res < 0) {
         printf("Failed to load disk image to floppy: %d\n", res);
         return -1;
     }
-    
-    // Debug: check track 0 data after loading
-    printf("Track 0 bit_count: %d bits (%d bytes)\n", 
-           floppy->tracks[0].bit_count, floppy->tracks[0].bit_count / 8);
-    printf("Track 0 first 16 bytes: ");
-    for (int i = 0; i < 16; i++) {
-        printf("%02X ", floppy->track_data[0][i]);
-    }
-    printf("\n");
     
     // Enable the boot signature so the slot is now bootable
     int enable = 1;

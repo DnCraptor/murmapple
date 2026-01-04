@@ -31,7 +31,7 @@ static const char *pico_nib_basename(const char *path) {
  * filling up a few 'correct' 10 bits sync uint8_ts, then plonk said sector
  * as is.
  */
-static void
+void
 mii_floppy_nib_render_track(
 		uint8_t *src_track,
 		mii_floppy_track_t * dst,
@@ -115,6 +115,7 @@ _mii_floppy_nib_write_sector(
 		uint8_t sector,
 		uint8_t data_sector[342 + 1] )
 {
+	(void)track_data;
 	printf("%s: T %2d S %2d has changed, writing sector\n",
 			__func__, track_id, sector);
 	uint8_t *dst = file->map + (track_id * 6656) +

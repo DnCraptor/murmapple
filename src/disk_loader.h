@@ -2,7 +2,8 @@
  * disk_loader.h
  * 
  * SD card disk image loader for murmapple
- * Scans /apple directory on SD card and loads disk images to PSRAM
+ * Scans /apple directory on SD card and mounts disk images into the emulator
+ * without staging the entire image in PSRAM.
  */
 
 #ifndef DISK_LOADER_H
@@ -36,14 +37,14 @@ typedef struct {
     disk_type_t type;
 } disk_entry_t;
 
-// Loaded disk image in PSRAM
+// Selected/loaded disk image metadata (image data is read from SD on mount)
 typedef struct {
-    uint8_t *data;          // Pointer to image data in PSRAM
+    uint8_t *data;          // Unused on RP2350 (kept for compatibility)
     uint32_t size;          // Size of image data
     disk_type_t type;       // Type of disk image
     char filename[MAX_FILENAME_LEN];
     bool loaded;            // True if image is loaded
-    bool write_back;        // True if modified (needs writeback)
+    bool write_back;        // Unused on RP2350 (kept for compatibility)
 } loaded_disk_t;
 
 // Global state
@@ -59,16 +60,17 @@ int disk_loader_init(void);
 // Returns number of images found
 int disk_scan_directory(void);
 
-// Load a disk image from SD card to PSRAM
+// Select a disk image for a drive (does not read the full image into PSRAM)
 // drive: 0 or 1 (Drive 1 or Drive 2)
 // index: index into g_disk_list
 // Returns 0 on success, -1 on error
 int disk_load_image(int drive, int index);
 
-// Unload a disk image (free PSRAM)
+// Unload a disk image (clears selection)
 void disk_unload_image(int drive);
 
 // Write back any modified disk image to SD card
+// NOTE: not supported in the no-PSRAM loader; returns an error if called.
 int disk_writeback(int drive);
 
 // Get disk image type from filename extension
