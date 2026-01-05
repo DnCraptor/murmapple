@@ -13,6 +13,9 @@
 #include "mii_sw.h"
 #include "mii_bank.h"
 
+// External function to clear held key state (from main.c)
+extern void clear_held_key(void);
+
 // Emulator reference (for mounting disks)
 static mii_t *g_mii = NULL;
 static int g_disk2_slot = 6;  // Default slot for Disk II
@@ -299,6 +302,9 @@ bool disk_ui_handle_key(uint8_t key) {
                                 mii_bank_t *sw_bank = &g_mii->bank[MII_BANK_SW];
                                 mii_bank_poke(sw_bank, SWKBD, 0);
                                 mii_bank_poke(sw_bank, SWAKD, 0);
+                                
+                                // Clear held key tracking to prevent re-latching
+                                clear_held_key();
                                 
                                 // Make sure slot ROMs are visible for PR#6 / disk boot.
                                 uint8_t sw_byte = 0;

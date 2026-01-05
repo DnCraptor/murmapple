@@ -190,6 +190,11 @@ uint8_t get_held_key(void) {
     return currently_held_key;
 }
 
+// Clear held key state (call after disk load or reset)
+void clear_held_key(void) {
+    currently_held_key = 0;
+}
+
 // Flag to indicate emulator is ready
 static volatile bool g_emulator_ready = false;
 

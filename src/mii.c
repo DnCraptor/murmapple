@@ -902,6 +902,9 @@ mii_reset(
 	mii_bank_poke(sw, 0xc061, 0);  // Button 0
 	mii_bank_poke(sw, 0xc062, 0);  // Button 1
 	mii_bank_poke(sw, 0xc063, 0);  // Button 2
+	// Clear keyboard state (fixes games skipping intro/title screens)
+	mii_bank_poke(sw, SWKBD, 0);   // Keyboard data
+	mii_bank_poke(sw, SWAKD, 0);   // Any key down (strobe)
 	mii->mem_dirty = 1;
 	if (cold) {
 		/*  these HAS to be reset in that state somehow */
@@ -1428,6 +1431,15 @@ mii_run_cycles(
 		
 		if (unlikely(mii->cpu_state.trap)) {
 			_mii_handle_trap(mii);
+		}
+		
+		// Run timers periodically even without I/O access
+		// This is needed for VBL timing when code does tight loops without I/O
+		uint64_t total = mii->cpu.total_cycle + mii->cpu.cycle;
+		uint64_t last = mii->timer.last_run;
+		if (total > last + 1000) {  // Every ~1000 cycles
+			mii_timer_run(mii, total - last);
+			mii->timer.last_run = total;
 		}
 	}
 }
