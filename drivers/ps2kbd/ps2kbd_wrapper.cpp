@@ -81,9 +81,22 @@ static unsigned char hid_to_apple2(uint8_t code, uint8_t modifiers) {
 
 static uint8_t current_modifiers = 0;
 
+// Track raw HID arrow key state for joystick emulation
+// Bits: 0=right, 1=left, 2=down, 3=up
+static uint8_t arrow_key_state = 0;
+
 static void key_handler(hid_keyboard_report_t *curr, hid_keyboard_report_t *prev) {
     // Store current modifiers for use in key mapping
     current_modifiers = curr->modifier;
+    
+    // Update arrow key state from current report
+    arrow_key_state = 0;
+    for (int i = 0; i < 6; i++) {
+        if (curr->keycode[i] == 0x4F) arrow_key_state |= 0x01;  // Right
+        if (curr->keycode[i] == 0x50) arrow_key_state |= 0x02;  // Left
+        if (curr->keycode[i] == 0x51) arrow_key_state |= 0x04;  // Down
+        if (curr->keycode[i] == 0x52) arrow_key_state |= 0x08;  // Up
+    }
     
     // Check for key presses (in curr but not in prev)
     for (int i = 0; i < 6; i++) {
@@ -158,4 +171,10 @@ int ps2kbd_get_key(int* pressed, unsigned char* key) {
 // Get current modifier state (for Open Apple / Solid Apple buttons)
 uint8_t ps2kbd_get_modifiers(void) {
     return current_modifiers;
+}
+
+// Get current arrow key state for joystick emulation
+// Returns: bits 0=right, 1=left, 2=down, 3=up
+uint8_t ps2kbd_get_arrow_state(void) {
+    return arrow_key_state;
 }

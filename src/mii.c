@@ -599,6 +599,9 @@ mii_access_soft_switches(
 	return res;
 }
 
+// External function to get currently held key (from main.c)
+extern uint8_t get_held_key(void);
+
 /*
  * Keyboard (and joystick buttons) related access. The soft switches
  * from 0xc000 to 0xc01f all return the ascii value in the 7 lower bits.
@@ -628,18 +631,19 @@ mii_access_keyboard(
 			uint8_t r = mii_bank_peek(sw, SWAKD);
 			if (!write)
 				*byte = r;
+			// Clear strobe (bit 7)
 			mii_bank_poke(sw, SWAKD, r & 0x7f);
+			// If a key is still physically held, re-latch it
+			uint8_t held = get_held_key();
+			if (held) {
+				mii_bank_poke(sw, SWAKD, held | 0x80);
+				mii_bank_poke(sw, SWKBD, held & 0x7f);
+			}
 		}	break;
 		case 0xc061 ... 0xc063: // Push Button 0, 1, 2 (Apple Keys)
 			res = true;
 			if (!write) {
 				*byte = mii_bank_peek(sw, addr);
-				// Debug: log first 20 button reads with non-zero value
-				static int btn_read_cnt = 0;
-				if ((*byte & 0x80) && btn_read_cnt < 20) {
-					btn_read_cnt++;
-					printf("BTN READ: $%04X=%02X PC=$%04X\n", addr, *byte, mii->cpu.PC);
-				}
 			}
 			break;
 	}
@@ -1102,6 +1106,9 @@ mii_timer_run(
 						} else {
 							mii->timer.timers[i].when += period;
 						}
+					} else {
+						// Timer with no callback (like paddle timers) - just stop at 0
+						mii->timer.timers[i].when = 0;
 					}
 				}
 			}

@@ -31,8 +31,17 @@ mii_analog_init(
 	memset(a, 0, sizeof(*a));
 	// Default to center position (127) - games use paddle timers for delays
 	// and value=0 means timer=0 cycles = no delay at all!
-	for (int i = 0; i < 4; i++)
+	for (int i = 0; i < 4; i++) {
 		a->v[i].value = 127;
+		a->v[i].timer_id = 0xFF;  // Invalid until registered
+	}
+	
+	// Pre-register paddle timers so they're ready when the game strobes $C070
+	// These timers have no callback - they just count down from the set value
+	for (int i = 0; i < 4; i++) {
+		a->v[i].timer_id = mii_timer_register(mii, NULL, NULL, 0, "analog");
+	}
+	a->enabled = true;  // Enable immediately so first strobe works
 }
 
 /*
@@ -51,22 +60,6 @@ mii_analog_access(
 	switch (addr) {
 		case 0xc070: {
 			/*
-			 * No need starting the cycle timers when nobody cares about
-			 * the analog values aka joysticks
-			 */
-			if (!a->enabled) {
-				a->enabled = true;
-				printf("ANALOG: enabling paddle timers (first $C070 strobe)\n");
-				/*
-				 * No need for a function pointer here for the timer, the
-				 * decrementing value is just what we need, and we're quite
-				 * happy to stop at ~0 as well.
-				 */
-				for (int i = 0; i < 4; i++)
-					a->v[i].timer_id = mii_timer_register(mii,
-									NULL, NULL, 0, __func__);
-			}
-			/*
 			 * Multiplying by mii->speed allows reading joystick in
 			 * 'fast' emulation mode, this basically simulate slowing down
 			 * just for the joystick reading
@@ -75,30 +68,13 @@ mii_analog_access(
 				int64_t timer_val = ((a->v[i].value * 11) * mii->speed);
 				mii_timer_set(mii, a->v[i].timer_id, timer_val);
 			}
-			// Debug: print first few times we strobe
-			static int strobe_count = 0;
-			if (strobe_count < 5) {
-				printf("ANALOG: $C070 strobe #%d values=%d,%d,%d,%d speed=%.2f\n",
-					strobe_count, a->v[0].value, a->v[1].value, 
-					a->v[2].value, a->v[3].value, mii->speed);
-				strobe_count++;
-			}
 		}	break;
 		case 0xc064 ... 0xc067: {
 			int idx = addr - 0xc064;
-			// Debug: warn if reading before $C070 strobe
-			if (!a->enabled) {
-				static int warn_count = 0;
-				if (warn_count < 5) {
-					printf("ANALOG: WARNING reading PDL%d before $C070 strobe! timer_id=%d\n", 
-						idx, a->v[idx].timer_id);
-					warn_count++;
-				}
-				// Return 0x00 (no delay) since timers not initialized
-				*byte = 0x00;
-				break;
-			}
-			*byte = mii_timer_get(mii, a->v[idx].timer_id) > 0 ? 0x80 : 0x00;
+			// Timer > 0 means still counting down, return 0x80
+			// Timer <= 0 means expired, return 0x00
+			int64_t t = mii_timer_get(mii, a->v[idx].timer_id);
+			*byte = t > 0 ? 0x80 : 0x00;
 		}	break;
 	}
 }

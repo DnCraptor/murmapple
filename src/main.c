@@ -68,6 +68,12 @@ extern void psram_set_sram_mode(int enable);
 extern void ps2kbd_init(void);
 extern void ps2kbd_tick(void);
 extern int ps2kbd_get_key(int* pressed, unsigned char* key);
+extern uint8_t ps2kbd_get_arrow_state(void);  // bits: 0=right, 1=left, 2=down, 3=up
+extern uint8_t ps2kbd_get_modifiers(void);
+
+// Keyboard modifier bits (from hid_codes.h)
+#define KEYBOARD_MODIFIER_LEFTALT    (1 << 2)
+#define KEYBOARD_MODIFIER_RIGHTALT   (1 << 6)
 
 // NES/SNES gamepad interface
 #include "nespad/nespad.h"
@@ -134,18 +140,15 @@ static void init_palette(void) {
 }
 
 // Process PS/2 keyboard input
-static uint32_t last_key_time = 0;
+// Track currently held key for games that need key-hold detection
+static uint8_t currently_held_key = 0;
+
 static void process_keyboard(void) {
     int pressed;
     unsigned char key;
     
     while (ps2kbd_get_key(&pressed, &key)) {
         if (pressed) {
-            uint32_t now = time_us_32();
-            uint32_t delta = now - last_key_time;
-            printf("KEY: 0x%02X delta=%lu us\n", key, delta);
-            last_key_time = now;
-            
             // Check for F11 - disk selector toggle
             if (key == KEY_F11) {
                 disk_ui_toggle();
@@ -158,11 +161,22 @@ static void process_keyboard(void) {
                 continue;
             }
             
-            // Normal key - send to emulator
-            printf("  -> Sending to emulator: 0x%02X\n", key);
+            // Normal key - send to emulator and track as held
             mii_keypress(&g_mii, key);
+            currently_held_key = key;
+        } else {
+            // Key released - clear if it was the held key
+            if (key == currently_held_key) {
+                currently_held_key = 0;
+            }
         }
     }
+}
+
+// Call this to check if we should re-latch a held key
+// Returns the currently held key, or 0 if none
+uint8_t get_held_key(void) {
+    return currently_held_key;
 }
 
 // Flag to indicate emulator is ready
@@ -534,27 +548,32 @@ int main() {
         nespad_read();
         {
             mii_bank_t *sw = &g_mii.bank[MII_BANK_SW];
-            // Map NES buttons to Apple II buttons:
-            // A/B -> Open Apple (Button 0, $C061)
-            // A/B -> Solid Apple (Button 1, $C062)
-            // Start -> Button 2 ($C063)
-            uint8_t btn0 = (nespad_state & (DPAD_A | DPAD_B)) ? 0x80 : 0x00;
-            uint8_t btn1 = (nespad_state & (DPAD_A | DPAD_B)) ? 0x80 : 0x00;
+            // Map NES buttons + keyboard modifiers to Apple II buttons:
+            // NES A/B or Left Alt -> Open Apple (Button 0, $C061)
+            // NES A/B or Right Alt -> Closed Apple (Button 1, $C062)
+            // NES Start -> Button 2 ($C063)
+            uint8_t mods = ps2kbd_get_modifiers();
+            uint8_t btn0 = (nespad_state & (DPAD_A | DPAD_B)) || (mods & KEYBOARD_MODIFIER_LEFTALT) ? 0x80 : 0x00;
+            uint8_t btn1 = (nespad_state & (DPAD_A | DPAD_B)) || (mods & KEYBOARD_MODIFIER_RIGHTALT) ? 0x80 : 0x00;
             uint8_t btn2 = (nespad_state & DPAD_START) ? 0x80 : 0x00;
             mii_bank_poke(sw, 0xc061, btn0);
             mii_bank_poke(sw, 0xc062, btn1);
             mii_bank_poke(sw, 0xc063, btn2);
             
-            // Debug: print nespad_state if non-zero (gamepad pressed)
-            static uint32_t last_printed = 0;
-            if (nespad_state != 0 && nespad_state != last_printed) {
-                printf("NESPAD: 0x%06lX btn0=%02X btn1=%02X btn2=%02X\n", 
-                       nespad_state, btn0, btn1, btn2);
-                last_printed = nespad_state;
-            } else if (nespad_state == 0 && last_printed != 0) {
-                printf("NESPAD: released\n");
-                last_printed = 0;
-            }
+            // Map NES D-pad to Apple II joystick
+            // (Keyboard arrows work as keyboard input, not joystick)
+            // Paddle 0 = X axis (left/right): 0=left, 127=center, 255=right
+            // Paddle 1 = Y axis (up/down): 255=up, 0=down (inverted for Apple II convention)
+            uint8_t joy_x = 127;  // center
+            uint8_t joy_y = 127;  // center
+            // NES D-pad only - arrows go through as keyboard
+            if (nespad_state & DPAD_LEFT)  joy_x = 0;
+            if (nespad_state & DPAD_RIGHT) joy_x = 255;
+            if (nespad_state & DPAD_UP)    joy_y = 255;
+            if (nespad_state & DPAD_DOWN)  joy_y = 0;
+            
+            g_mii.analog.v[0].value = joy_x;
+            g_mii.analog.v[1].value = joy_y;
         }
         uint32_t input_end = time_us_32();
         total_input_time += (input_end - input_start);
@@ -608,11 +627,8 @@ int main() {
                 (store80 ? 64u : 0u) |
                 ((uint32_t)(an3 & 3u) << 8);
 
-            if (mode_key != last_mode_key) {
-                last_mode_key = mode_key;
-                const char *label = text_mode ? "TEXT" : (hires ? ((dhires && col80) ? "DHGR" : (mixed ? "HGR+MIXED" : "HGR")) : "LORES");
-                printf("VIDEO: %s\n", label);
-            }
+            // Track mode changes silently (remove debug spam)
+            last_mode_key = mode_key;
         }
         
         // Print detailed performance metrics every 300 frames (5 seconds)

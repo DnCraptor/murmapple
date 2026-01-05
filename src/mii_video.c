@@ -670,10 +670,6 @@ mii_video_reset_vbl_timer(mii_t *mii)
 	mii_video_t *video = &mii->video;
 	mii_bank_t *sw = &mii->bank[MII_BANK_SW];
 	
-	int64_t old_when = mii_timer_get(mii, video->timer_id);
-	uint64_t old_last_run = mii->timer.last_run;
-	uint64_t current_cycle = mii->cpu.total_cycle + mii->cpu.cycle;
-	
 	// Reset to start of visible area
 	video->vbl_phase = 0;
 	mii_bank_poke(sw, SWVBL, 0x00);
@@ -682,11 +678,7 @@ mii_video_reset_vbl_timer(mii_t *mii)
 	mii_timer_set(mii, video->timer_id, MII_VBL_DOWN_CYCLES);
 	
 	// Reset last_run to current cycle count
-	mii->timer.last_run = current_cycle;
-	
-	printf("VBL_RESET: old_when=%lld new_when=%d old_last=%llu new_last=%llu\n",
-		   (long long)old_when, MII_VBL_DOWN_CYCLES,
-		   (unsigned long long)old_last_run, (unsigned long long)current_cycle);
+	mii->timer.last_run = mii->cpu.total_cycle + mii->cpu.cycle;
 }
 
 #else // !MII_RP2350
@@ -1884,6 +1876,12 @@ mii_video_scale_to_hdmi(
 	// Get parent mii structure
 	mii_t *mii = (mii_t *)((char*)video - offsetof(mii_t, video));
 	
+	// Clear top and bottom borders (24 rows each) to black
+	// Top border: rows 0-23
+	memset(hdmi_buffer, 0, 320 * 24);
+	// Bottom border: rows 216-239
+	memset(hdmi_buffer + 320 * 216, 0, 320 * 24);
+	
 	uint32_t sw = mii->sw_state;
 	bool text_mode = !!(sw & M_SWTEXT);
 	bool mixed = !!(sw & M_SWMIXED);
@@ -1892,24 +1890,6 @@ mii_video_scale_to_hdmi(
 	bool col80 = !!(sw & M_SW80COL);
 	bool dhires = !!(sw & M_SWDHIRES);
 	uint8_t an3_mode = video->an3_mode;
-	
-	// Debug: track major mode changes only (ignore memory banking bits)
-	static uint8_t last_mode = 0xFF;
-	static uint8_t last_an3 = 0xFF;
-	uint8_t current_mode = (text_mode << 4) | (hires << 3) | (mixed << 2) | (col80 << 1) | dhires;
-	if (current_mode != last_mode || an3_mode != last_an3) {
-		last_mode = current_mode;
-		last_an3 = an3_mode;
-		const char *mode_name = "?";
-		// DHGR: an3_mode 1=color, 2=mono; also traditional check with col80
-		bool is_dhgr = hires && !text_mode && dhires && (col80 || (an3_mode >= 1 && an3_mode <= 2));
-		if (text_mode) mode_name = "TEXT";
-		else if (is_dhgr) mode_name = "DHGR";
-		else if (hires) mode_name = "HGR";
-		else mode_name = "LORES";
-		printf("VIDEO MODE: %s (TEXT=%d HIRES=%d 80COL=%d DHIRES=%d AN3=%d)\n",
-			   mode_name, text_mode, hires, col80, dhires, an3_mode);
-	}
 	
 	if (text_mode) {
 		// Pure text mode

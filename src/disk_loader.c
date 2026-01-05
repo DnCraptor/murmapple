@@ -573,7 +573,6 @@ int disk_mount_to_emulator(int drive, mii_t *mii, int slot, int preserve_state) 
     
     // Reset VBL timer after disk loading - the long SD card read
     // may have caused the timer to accumulate negative cycles
-    printf("DEBUG: About to call mii_video_reset_vbl_timer\n");
     mii_video_reset_vbl_timer(mii);
     
     printf("Disk %s mounted successfully to drive %d\n", disk->filename, drive + 1);
