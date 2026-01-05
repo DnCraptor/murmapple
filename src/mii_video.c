@@ -1872,62 +1872,49 @@ int mii_disk2_get_motor_state(void);
 
 // Draw a simple floppy disk activity indicator in the bottom border
 static void
-mii_video_draw_floppy_indicator(uint8_t *hdmi_buffer, int motor_state)
+mii_video_draw_floppy_indicator(uint8_t *hdmi_buffer, int motor_state, uint32_t frame_count)
 {
 	if (motor_state == 0)
 		return;  // No motor active, don't draw
 	
-	// Draw in bottom-right corner of bottom border
-	// Bottom border starts at row 216 (rows 216-239 = 24 rows)
-	// Icon position: 8x8 pixels, right side
-	int start_x = 304;  // 320 - 16
-	int start_y = 220;  // Near top of bottom border
-	
-	// Simple 8x8 floppy disk icon (simplified)
-	// 0 = black, 1 = color (based on drive number)
-	static const uint8_t floppy_icon[8] = {
-		0b11111110,  // Top edge
-		0b10000010,  // Left/right edge
-		0b10111010,  // With label area
-		0b10111010,  // 
-		0b10000010,  // 
-		0b10011010,  // Metal slider area
-		0b10011010,  //
-		0b11111110,  // Bottom edge
-	};
-	
-	// Color: Green for drive 1, Orange for drive 2
-	uint8_t color = (motor_state == 1) ? 0x1C : 0xE0;  // Green or Orange in 8-bit RGB332
-	
-	for (int y = 0; y < 8; y++) {
-		uint8_t row = floppy_icon[y];
-		for (int x = 0; x < 8; x++) {
-			if (row & (0x80 >> x)) {
-				int offset = (start_y + y) * 320 + (start_x + x);
-				hdmi_buffer[offset] = color;
-			}
-		}
+	// Flash the icon (on/off every 8 frames, approx 130ms at 60Hz) to indicate activity
+	if ((frame_count / 8) % 2 == 0) {
+		return; 
 	}
 	
-	// Also draw drive number (1 or 2)
-	// Simple: draw "1" or "2" next to the icon
-	int num_x = start_x - 10;
-	if (motor_state == 1) {
-		// Draw "1" - simple vertical line
-		for (int y = 2; y < 7; y++) {
-			hdmi_buffer[(start_y + y) * 320 + num_x + 2] = color;
+	// Draw in bottom-right corner of bottom border
+	// Bottom border starts at row 216 (rows 216-239 = 24 rows)
+	// Icon position: 10x10 pixels (scaled up a bit), right side
+	int start_x = 300;  
+	int start_y = 222;  
+	
+	// Improved floppy disk icon (10x10)
+	// 0 = transparent, 1 = body, 2 = label/shutter
+	static const uint16_t floppy_icon[10] = {
+		0b0111111110, // .########.
+		0b1001110001, // #..###...#
+		0b1001110001, // #..###...#
+		0b1001110001, // #..###...#
+		0b1001110001, // #..###...#
+		0b1000000001, // #........#
+		0b1001111001, // #..####..#
+		0b1001111001, // #..####..#
+		0b1001111001, // #..####..#
+		0b0111111110, // .########.
+	};
+	
+	// Color: Green for drive 1, Red/Orange for drive 2
+	uint8_t body_color = (motor_state == 1) ? 0x1C : 0xE0;  
+	
+	for (int y = 0; y < 10; y++) {
+		uint16_t row = floppy_icon[y];
+		for (int x = 0; x < 10; x++) {
+			if (row & (1 << (9 - x))) {
+				int offset = (start_y + y) * 320 + (start_x + x);
+				// Solid color
+				hdmi_buffer[offset] = body_color;
+			}
 		}
-	} else {
-		// Draw "2" - simplified
-		hdmi_buffer[(start_y + 2) * 320 + num_x + 1] = color;
-		hdmi_buffer[(start_y + 2) * 320 + num_x + 2] = color;
-		hdmi_buffer[(start_y + 2) * 320 + num_x + 3] = color;
-		hdmi_buffer[(start_y + 3) * 320 + num_x + 3] = color;
-		hdmi_buffer[(start_y + 4) * 320 + num_x + 2] = color;
-		hdmi_buffer[(start_y + 5) * 320 + num_x + 1] = color;
-		hdmi_buffer[(start_y + 6) * 320 + num_x + 1] = color;
-		hdmi_buffer[(start_y + 6) * 320 + num_x + 2] = color;
-		hdmi_buffer[(start_y + 6) * 320 + num_x + 3] = color;
 	}
 }
 
@@ -1981,7 +1968,7 @@ mii_video_scale_to_hdmi(
 	// Draw floppy activity indicator in bottom border
 	int motor_state = mii_disk2_get_motor_state();
 	if (motor_state > 0) {
-		mii_video_draw_floppy_indicator(hdmi_buffer, motor_state);
+		mii_video_draw_floppy_indicator(hdmi_buffer, motor_state, mii->video.frame_count);
 	}
 }
 
