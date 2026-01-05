@@ -20,6 +20,7 @@ static int g_disk2_slot = 6;  // Default slot for Disk II
 // UI state - volatile to prevent race conditions between cores
 static volatile disk_ui_state_t ui_state = DISK_UI_HIDDEN;
 static volatile int selected_drive = 0;      // 0 or 1
+static volatile disk_action_t selected_action = DISK_ACTION_BOOT;  // Boot or Insert
 static volatile int selected_index = 0;      // Currently highlighted disk
 static volatile int scroll_offset = 0;       // For scrolling long lists
 static volatile bool ui_dirty = false;       // True when UI needs redraw
@@ -251,6 +252,9 @@ bool disk_ui_handle_key(uint8_t key) {
     switch (key) {
         case 0x1B:  // Escape
             if (ui_state == DISK_UI_SELECT_DISK) {
+                ui_state = DISK_UI_SELECT_ACTION;
+                ui_dirty = true;
+            } else if (ui_state == DISK_UI_SELECT_ACTION) {
                 ui_state = DISK_UI_SELECT_DRIVE;
                 ui_dirty = true;
             } else {
@@ -261,59 +265,48 @@ bool disk_ui_handle_key(uint8_t key) {
             
         case 0x0D:  // Enter
             if (ui_state == DISK_UI_SELECT_DRIVE) {
+                ui_state = DISK_UI_SELECT_ACTION;
+                selected_action = DISK_ACTION_BOOT;  // Default to boot
+                ui_dirty = true;
+                printf("Disk UI: selecting action for drive %d\n", selected_drive + 1);
+            } else if (ui_state == DISK_UI_SELECT_ACTION) {
                 ui_state = DISK_UI_SELECT_DISK;
                 selected_index = 0;
                 scroll_offset = 0;
                 ui_dirty = true;
-                printf("Disk UI: selecting disk for drive %d\n", selected_drive + 1);
+                printf("Disk UI: selecting disk for drive %d (%s mode)\n", 
+                       selected_drive + 1, 
+                       selected_action == DISK_ACTION_BOOT ? "BOOT" : "INSERT");
             } else if (ui_state == DISK_UI_SELECT_DISK) {
                 // Load the selected disk to PSRAM
-                printf("Disk UI: loading disk %d to drive %d\n", selected_index, selected_drive + 1);
+                printf("Disk UI: loading disk %d to drive %d (%s)\n", 
+                       selected_index, selected_drive + 1,
+                       selected_action == DISK_ACTION_BOOT ? "BOOT" : "INSERT");
                 if (disk_load_image(selected_drive, selected_index) == 0) {
                     // Mount the disk to the emulator
                     if (g_mii) {
                         if (disk_mount_to_emulator(selected_drive, g_mii, g_disk2_slot) == 0) {
                             printf("Disk UI: disk mounted successfully\n");
-                            // Reset the CPU so it can boot from the new disk
-                            printf("Disk UI: resetting CPU for disk boot\n");
-                            mii_reset(g_mii, true);
                             
-                            // Clear keyboard state so no spurious key is pending
-                            // This prevents animations from being skipped due to leftover
-                            // keypress from the disk UI (e.g., the Enter key used to select)
-                            mii_bank_t *sw_bank = &g_mii->bank[MII_BANK_SW];
-                            mii_bank_poke(sw_bank, SWKBD, 0);
-                            mii_bank_poke(sw_bank, SWAKD, 0);
-                            
-                            // DEBUG: Dump all input-related soft switch values
-                            printf("=== INPUT STATE AFTER RESET ===\n");
-                            printf("Keyboard: $C000(KBD)=%02X $C010(AKD)=%02X\n",
-                                   mii_bank_peek(sw_bank, SWKBD),
-                                   mii_bank_peek(sw_bank, SWAKD));
-                            printf("Buttons:  $C061=%02X $C062=%02X $C063=%02X\n",
-                                   mii_bank_peek(sw_bank, 0xc061),
-                                   mii_bank_peek(sw_bank, 0xc062),
-                                   mii_bank_peek(sw_bank, 0xc063));
-                            printf("Paddles:  $C064=%02X $C065=%02X $C066=%02X $C067=%02X\n",
-                                   mii_bank_peek(sw_bank, 0xc064),
-                                   mii_bank_peek(sw_bank, 0xc065),
-                                   mii_bank_peek(sw_bank, 0xc066),
-                                   mii_bank_peek(sw_bank, 0xc067));
-                            printf("Video:    TEXT=%02X MIXED=%02X HIRES=%02X PAGE2=%02X\n",
-                                   mii_bank_peek(sw_bank, SWTEXT),
-                                   mii_bank_peek(sw_bank, SWMIXED),
-                                   mii_bank_peek(sw_bank, SWHIRES),
-                                   mii_bank_peek(sw_bank, SWPAGE2));
-                            printf("80COL=%02X DHIRES=%02X VBL=%02X\n",
-                                   mii_bank_peek(sw_bank, SW80COL),
-                                   mii_bank_peek(sw_bank, SWRDDHIRES),
-                                   mii_bank_peek(sw_bank, SWVBL));
-                            printf("================================\n");
-                            
-						// Make sure slot ROMs are visible for PR#6 / disk boot.
-						// The core reset defaults keep INTCXROM ON for reliable BASIC boot.
-						uint8_t sw_byte = 0;
-						mii_mem_access(g_mii, SWINTCXROMOFF, &sw_byte, true, true);
+                            if (selected_action == DISK_ACTION_BOOT) {
+                                // BOOT mode: Reset the CPU so it can boot from the new disk
+                                printf("Disk UI: resetting CPU for disk boot\n");
+                                mii_reset(g_mii, true);
+                                
+                                // Clear keyboard state so no spurious key is pending
+                                mii_bank_t *sw_bank = &g_mii->bank[MII_BANK_SW];
+                                mii_bank_poke(sw_bank, SWKBD, 0);
+                                mii_bank_poke(sw_bank, SWAKD, 0);
+                                
+                                // Make sure slot ROMs are visible for PR#6 / disk boot.
+                                uint8_t sw_byte = 0;
+                                mii_mem_access(g_mii, SWINTCXROMOFF, &sw_byte, true, true);
+                                
+                                printf("Disk UI: CPU reset complete\n");
+                            } else {
+                                // INSERT mode: Just swap the disk, don't reset
+                                printf("Disk UI: disk inserted (no reset)\n");
+                            }
                         } else {
                             printf("Disk UI: failed to mount disk to emulator\n");
                         }
@@ -333,6 +326,11 @@ bool disk_ui_handle_key(uint8_t key) {
                     selected_drive = 0;
                     ui_dirty = true;
                 }
+            } else if (ui_state == DISK_UI_SELECT_ACTION) {
+                if (selected_action != DISK_ACTION_BOOT) {
+                    selected_action = DISK_ACTION_BOOT;
+                    ui_dirty = true;
+                }
             } else if (ui_state == DISK_UI_SELECT_DISK) {
                 if (selected_index > 0) {
                     selected_index--;
@@ -350,6 +348,11 @@ bool disk_ui_handle_key(uint8_t key) {
             if (ui_state == DISK_UI_SELECT_DRIVE) {
                 if (selected_drive != 1) {
                     selected_drive = 1;
+                    ui_dirty = true;
+                }
+            } else if (ui_state == DISK_UI_SELECT_ACTION) {
+                if (selected_action != DISK_ACTION_INSERT) {
+                    selected_action = DISK_ACTION_INSERT;
                     ui_dirty = true;
                 }
             } else if (ui_state == DISK_UI_SELECT_DISK) {
@@ -468,6 +471,35 @@ void disk_ui_render(uint8_t *framebuffer, int width, int height) {
         if (full_redraw) {
             // Instructions
             draw_string(framebuffer, width, text_x, UI_Y + UI_HEIGHT - 14, "ENTER=OK  ESC=CANCEL", COLOR_TEXT);
+        }
+        
+    } else if (state == DISK_UI_SELECT_ACTION) {
+        if (full_redraw) {
+            // Title
+            char title[32];
+            snprintf(title, sizeof(title), "DRIVE %d - SELECT ACTION", drive + 1);
+            draw_string(framebuffer, width, text_x, text_y, title, COLOR_TITLE);
+        }
+        text_y += 20;
+        
+        // Action options
+        int item_width = UI_WIDTH - UI_PADDING * 2;
+        disk_action_t action = selected_action;
+        
+        // BOOT option
+        draw_rect(framebuffer, width, text_x - 4, text_y, item_width, 12, COLOR_BG);
+        uint8_t color_boot = (action == DISK_ACTION_BOOT) ? COLOR_HIGHLIGHT : COLOR_TEXT;
+        draw_string(framebuffer, width, text_x, text_y, "BOOT   - Insert disk & reboot", color_boot);
+        text_y += 16;
+        
+        // INSERT option
+        draw_rect(framebuffer, width, text_x - 4, text_y, item_width, 12, COLOR_BG);
+        uint8_t color_insert = (action == DISK_ACTION_INSERT) ? COLOR_HIGHLIGHT : COLOR_TEXT;
+        draw_string(framebuffer, width, text_x, text_y, "INSERT - Swap disk (no reboot)", color_insert);
+        
+        if (full_redraw) {
+            // Instructions
+            draw_string(framebuffer, width, text_x, UI_Y + UI_HEIGHT - 14, "ENTER=OK  ESC=BACK", COLOR_TEXT);
         }
         
     } else if (state == DISK_UI_SELECT_DISK) {

@@ -17,8 +17,15 @@ struct mii_t;
 typedef enum {
     DISK_UI_HIDDEN,
     DISK_UI_SELECT_DRIVE,   // Selecting which drive (1 or 2)
+    DISK_UI_SELECT_ACTION,  // Selecting action: Boot or Insert
     DISK_UI_SELECT_DISK,    // Selecting disk image
 } disk_ui_state_t;
+
+// Disk action types
+typedef enum {
+    DISK_ACTION_BOOT,       // Insert disk and reset CPU
+    DISK_ACTION_INSERT,     // Insert disk without reset (for disk swapping)
+} disk_action_t;
 
 // Initialize disk UI with emulator pointer
 // mii: pointer to the emulator instance
