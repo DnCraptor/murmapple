@@ -216,7 +216,8 @@ void rcvr_spi_multi (
 	uint8_t *b = (uint8_t *) buff;
 #ifndef SDCARD_PIO
 	// Read in small chunks with yields to allow HDMI DMA IRQ to fire
-	const UINT chunk_size = 64;
+	// Reduced to 32 bytes (<31us at 10MHz) to ensure we don't block longer than a scanline
+	const UINT chunk_size = 32;
 	while (btr > 0) {
 		UINT chunk = (btr > chunk_size) ? chunk_size : btr;
 		spi_read_blocking(SDCARD_SPI_BUS, 0xff, b, chunk);

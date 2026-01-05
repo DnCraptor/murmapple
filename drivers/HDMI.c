@@ -10,6 +10,7 @@
 #include "pico/multicore.h"
 #include "hardware/clocks.h"
 #include "hardware/irq.h"
+#include "pico/platform.h"
 
 // Flag to defer IRQ handler setup to Core 1
 // When true, hdmi_init() will NOT set the IRQ handler - Core 1 must call
@@ -61,7 +62,7 @@ void graphics_set_shift(int x, int y) {
     graphics_buffer_shift_y = y;
 }
 
-uint8_t* get_line_buffer(int line) {
+uint8_t* __not_in_flash_func(get_line_buffer)(int line) {
     if (!graphics_buffer) return NULL;
     if (line < 0 || line >= graphics_buffer_height) return NULL;
     return graphics_buffer + line * graphics_buffer_width;
@@ -76,15 +77,15 @@ static struct video_mode_t video_mode[] = {
     }
 };
 
-struct video_mode_t graphics_get_video_mode(int mode) {
+struct video_mode_t __not_in_flash_func(graphics_get_video_mode)(int mode) {
     return video_mode[0];
 }
 
-int get_video_mode() {
+int __not_in_flash_func(get_video_mode)() {
     return 0;
 }
 
-void vsync_handler() {
+void __not_in_flash_func(vsync_handler)() {
     // Called from DMA IRQ at frame boundary.
     graphics_frame_count++;
     uint8_t *pending = (uint8_t *)graphics_pending_buffer;
@@ -150,15 +151,27 @@ static inline bool hdmi_init(void);
 // Check if HDMI DMA has stalled and restart if needed.
 // Call this periodically during long operations to maintain HDMI signal.
 bool hdmi_check_and_restart(void) {
+    static uint32_t last_check_time = 0;
+    uint32_t now = time_us_32();
+    
+    // Don't check more often than approx 2 frames (33ms) to avoid false positives
+    // when called from tight loops (like SD card transfers).
+    if (now - last_check_time < 33000) {
+        return false;
+    }
+
     uint32_t current = irq_inx;
     if (current == last_check_irq) {
-        // IRQ count hasn't changed - HDMI may have stalled
+        // IRQ count hasn't changed in >33ms - HDMI has likely stalled
         printf("HDMI: DMA stalled (irq_inx=%lu), restarting...\n", (unsigned long)current);
         hdmi_init();
         last_check_irq = irq_inx;
+        last_check_time = now;
         return true;
     }
+    
     last_check_irq = current;
+    last_check_time = now;
     return false;
 }
 
@@ -291,7 +304,7 @@ static void pio_set_x(PIO pio, const int sm, uint32_t v) {
     pio_sm_exec(pio, sm, instr_mov);
 }
 
-static void dma_handler_HDMI() {
+static void __not_in_flash_func(dma_handler_HDMI)() {
     static uint32_t inx_buf_dma;
     static uint line = 0;
     struct video_mode_t mode = graphics_get_video_mode(get_video_mode());
