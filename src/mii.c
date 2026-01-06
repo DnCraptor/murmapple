@@ -953,9 +953,9 @@ mii_mem_access(
 		return;
 	}
 	
-	// Keyboard: $C000-$C01F  
+	// Keyboard: $C000-$C01F and Apple/joystick buttons: $C061-$C063
 	uint8_t low = addr & 0xff;
-	if (low <= 0x1f) {
+	if (low <= 0x1f || (low >= 0x61 && low <= 0x63)) {
 		if (mii_access_keyboard(mii, addr, d, wr))
 			return;
 	}
