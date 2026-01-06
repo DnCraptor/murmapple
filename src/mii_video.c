@@ -1749,7 +1749,7 @@ mii_video_render_dhires_rp2350(
 
 	// Apple II DHGR is 560x192. We render into 320x240 with 24px top margin.
 	// Use nearest-neighbor horizontal resample: src_x = (x * 7) / 4.
-	const bool color = (mii->video.an3_mode == 1);
+	const bool color = (mii->video.an3_mode != 0) && !mii->video.monochrome;
 
 	for (int line = 0; line < 192; line++) {
 		uint16_t line_addr = _mii_line_to_video_addr(base_addr, (uint8_t)line);
