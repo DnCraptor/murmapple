@@ -41,13 +41,13 @@
 // Note: mii_analog_access is now provided by mii_analog.c for paddle timing
 
 void mii_speaker_click(mii_speaker_t *speaker) {
+    (void)speaker;
 #ifdef FEATURE_AUDIO
     // Forward speaker clicks to I2S audio driver
-    if (speaker && speaker->mii) {
-        mii_audio_speaker_click(speaker->mii->cpu.total_cycle);
+    extern mii_t g_mii;
+    if (mii_audio_i2s_is_init()) {
+        mii_audio_speaker_click(g_mii.cpu.total_cycle);
     }
-#else
-    (void)speaker;
 #endif
 }
 
@@ -107,8 +107,8 @@ static void __no_inline_not_in_flash_func(set_flash_timings)(int cpu_mhz) {
                         divisor << QMI_M0_TIMING_CLKDIV_LSB;
 }
 
-// Global emulator state
-static mii_t g_mii;
+// Global emulator state (non-static for access from mii_speaker_click stub)
+mii_t g_mii;
 
 // HDMI framebuffer
 static uint8_t *g_hdmi_front_buffer = NULL;

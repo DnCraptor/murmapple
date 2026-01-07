@@ -21,8 +21,18 @@ else()
     set(CPU_VOLTAGE "VREG_VOLTAGE_1_50")
 endif()
 
+# I2S Audio pin configuration based on board variant
+if(BOARD_VARIANT STREQUAL "M1")
+    set(I2S_DATA_PIN "26")
+    set(I2S_CLOCK_PIN_BASE "27")
+else()  # M2
+    set(I2S_DATA_PIN "9")
+    set(I2S_CLOCK_PIN_BASE "10")
+endif()
+
 message(STATUS "murmapple - Apple IIe Emulator for RP2350")
 message(STATUS "Board: ${BOARD_VARIANT}, CPU: ${CPU_SPEED} MHz, PSRAM: ${PSRAM_SPEED} MHz, Voltage: ${CPU_VOLTAGE}")
+message(STATUS "I2S Audio: DATA=${I2S_DATA_PIN}, CLK_BASE=${I2S_CLOCK_PIN_BASE}")
 
 include(pico_sdk_import.cmake)
 
@@ -105,9 +115,14 @@ target_compile_definitions(murmapple PRIVATE
     MII_65C02_DIRECT_ACCESS=1
     MII_RP2350=1
     # I2S Audio configuration
-    PICO_AUDIO_I2S_PIO=1
+    # NOTE: HDMI uses PIO1, PS/2 uses PIO0 SM0 (claimed dynamically)
+    # So I2S uses PIO0 SM2 (claimed statically before PS/2 init)
+    PICO_AUDIO_I2S_PIO=0
     PICO_AUDIO_I2S_STATE_MACHINE=2
     PICO_AUDIO_I2S_DMA_IRQ=1
+    PICO_AUDIO_I2S_DMA_CHANNEL=6
+    PICO_AUDIO_I2S_DATA_PIN=${I2S_DATA_PIN}
+    PICO_AUDIO_I2S_CLOCK_PIN_BASE=${I2S_CLOCK_PIN_BASE}
     FEATURE_AUDIO=1
 )
 

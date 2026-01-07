@@ -45,7 +45,13 @@ void mii_audio_mockingboard_enable(bool enable);
 // Returns number of samples written
 int mii_audio_update(uint64_t current_cycle, uint64_t cycles_per_second);
 
+// Sync audio cycle counter with CPU cycle (call after reset or disk load)
+void mii_audio_sync_cycle(uint64_t cpu_cycle);
+
 // Get speaker output level (for visualization)
 int16_t mii_audio_get_speaker_level(void);
+
+// Test beep - plays a simple tone to verify I2S output
+void mii_audio_test_beep(int frequency_hz, int duration_ms);
 
 #endif // MII_AUDIO_I2S_H
