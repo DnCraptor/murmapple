@@ -77,6 +77,7 @@ extern void ps2kbd_tick(void);
 extern int ps2kbd_get_key(int* pressed, unsigned char* key);
 extern uint8_t ps2kbd_get_arrow_state(void);  // bits: 0=right, 1=left, 2=down, 3=up
 extern uint8_t ps2kbd_get_modifiers(void);
+extern bool ps2kbd_is_reset_combo(void);  // Ctrl+Alt+Delete pressed
 
 // Keyboard modifier bits (from hid_codes.h)
 #define KEYBOARD_MODIFIER_LEFTALT    (1 << 2)
@@ -598,6 +599,19 @@ int main() {
         // Poll keyboard at start of frame
         uint32_t input_start = time_us_32();
         ps2kbd_tick();
+        
+        // Check for Ctrl+Alt+Delete reset combo
+        static bool reset_combo_active = false;
+        if (ps2kbd_is_reset_combo()) {
+            if (!reset_combo_active) {
+                reset_combo_active = true;
+                printf("Reset combo detected (Ctrl+Alt+Delete)\n");
+                mii_reset(&g_mii, true);
+            }
+        } else {
+            reset_combo_active = false;
+        }
+        
         process_keyboard();
         
         // Poll NES gamepad and update Apple II buttons
@@ -607,7 +621,22 @@ int main() {
             static uint32_t prev_nespad_state = 0;
             static uint32_t gamepad_hold_frames = 0;
             static uint32_t gamepad_held_button = 0;
+            static bool gamepad_reset_combo_active = false;
             uint32_t nespad_pressed = nespad_state & ~prev_nespad_state;  // Just pressed this frame
+            
+            // Check for Start+A+B reset combo
+            if ((nespad_state & (DPAD_START | DPAD_A | DPAD_B)) == (DPAD_START | DPAD_A | DPAD_B)) {
+                if (!gamepad_reset_combo_active) {
+                    gamepad_reset_combo_active = true;
+                    printf("Reset combo detected (Start+A+B)\n");
+                    mii_reset(&g_mii, true);
+                }
+                // Skip all gamepad processing while reset combo is held
+                prev_nespad_state = nespad_state;
+                goto skip_gamepad_emulation;
+            } else {
+                gamepad_reset_combo_active = false;
+            }
             
             // Gamepad repeat settings (same timing as keyboard)
             #define GAMEPAD_REPEAT_INITIAL 30  // ~500ms at 60fps
