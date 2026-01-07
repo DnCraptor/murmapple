@@ -17,15 +17,10 @@ struct mii_t;
 typedef enum {
     DISK_UI_HIDDEN,
     DISK_UI_SELECT_DRIVE,   // Selecting which drive (1 or 2)
-    DISK_UI_SELECT_ACTION,  // Selecting action: Boot or Insert
-    DISK_UI_SELECT_DISK,    // Selecting disk image
+    DISK_UI_SELECT_FILE,    // Selecting disk image file
+    DISK_UI_SELECT_ACTION,  // Selecting action: Boot, Insert, or Cancel
+    DISK_UI_LOADING,        // Loading disk from SD card
 } disk_ui_state_t;
-
-// Disk action types
-typedef enum {
-    DISK_ACTION_BOOT,       // Insert disk and reset CPU
-    DISK_ACTION_INSERT,     // Insert disk without reset (for disk swapping)
-} disk_action_t;
 
 // Initialize disk UI with emulator pointer
 // mii: pointer to the emulator instance
@@ -55,7 +50,13 @@ void disk_ui_render(uint8_t *framebuffer, int width, int height);
 // Check if UI is visible
 bool disk_ui_is_visible(void);
 
+// Check if UI needs redraw
+bool disk_ui_needs_redraw(void);
+
 // Get currently selected drive (0 or 1)
 int disk_ui_get_selected_drive(void);
+
+// Show loading screen
+void disk_ui_show_loading(void);
 
 #endif // DISK_UI_H
