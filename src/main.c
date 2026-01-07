@@ -603,6 +603,82 @@ int main() {
         // Poll NES gamepad and update Apple II buttons
         nespad_read();
         {
+            // Track previous gamepad state for edge detection
+            static uint32_t prev_nespad_state = 0;
+            static uint32_t gamepad_hold_frames = 0;
+            static uint32_t gamepad_held_button = 0;
+            uint32_t nespad_pressed = nespad_state & ~prev_nespad_state;  // Just pressed this frame
+            
+            // Gamepad repeat settings (same timing as keyboard)
+            #define GAMEPAD_REPEAT_INITIAL 30  // ~500ms at 60fps
+            #define GAMEPAD_REPEAT_RATE 4      // ~67ms between repeats
+            
+            // SELECT button toggles disk UI (like F11)
+            if (nespad_pressed & DPAD_SELECT) {
+                disk_ui_toggle();
+            }
+            
+            // If disk UI is visible, handle gamepad navigation
+            if (disk_ui_is_visible()) {
+                // Track which D-pad direction is held for repeat
+                uint32_t dpad_mask = DPAD_UP | DPAD_DOWN | DPAD_LEFT | DPAD_RIGHT;
+                uint32_t dpad_held = nespad_state & dpad_mask;
+                
+                // Handle initial press
+                if (nespad_pressed & DPAD_UP) {
+                    disk_ui_handle_key(0x0B);
+                    gamepad_held_button = DPAD_UP;
+                    gamepad_hold_frames = 0;
+                }
+                if (nespad_pressed & DPAD_DOWN) {
+                    disk_ui_handle_key(0x0A);
+                    gamepad_held_button = DPAD_DOWN;
+                    gamepad_hold_frames = 0;
+                }
+                if (nespad_pressed & DPAD_LEFT) {
+                    disk_ui_handle_key(0x08);
+                    gamepad_held_button = DPAD_LEFT;
+                    gamepad_hold_frames = 0;
+                }
+                if (nespad_pressed & DPAD_RIGHT) {
+                    disk_ui_handle_key(0x15);
+                    gamepad_held_button = DPAD_RIGHT;
+                    gamepad_hold_frames = 0;
+                }
+                
+                // Handle key repeat for held D-pad
+                if (dpad_held && (dpad_held & gamepad_held_button)) {
+                    gamepad_hold_frames++;
+                    if (gamepad_hold_frames > GAMEPAD_REPEAT_INITIAL) {
+                        uint32_t since_delay = gamepad_hold_frames - GAMEPAD_REPEAT_INITIAL;
+                        if ((since_delay % GAMEPAD_REPEAT_RATE) == 0) {
+                            if (gamepad_held_button == DPAD_UP) disk_ui_handle_key(0x0B);
+                            else if (gamepad_held_button == DPAD_DOWN) disk_ui_handle_key(0x0A);
+                            else if (gamepad_held_button == DPAD_LEFT) disk_ui_handle_key(0x08);
+                            else if (gamepad_held_button == DPAD_RIGHT) disk_ui_handle_key(0x15);
+                        }
+                    }
+                } else {
+                    gamepad_held_button = 0;
+                    gamepad_hold_frames = 0;
+                }
+                
+                // A button = Enter (select) - no repeat
+                if (nespad_pressed & DPAD_A) {
+                    disk_ui_handle_key(0x0D);
+                }
+                // B button = Escape (cancel/back) - no repeat
+                if (nespad_pressed & DPAD_B) {
+                    disk_ui_handle_key(0x1B);
+                }
+                
+                // Don't update joystick/buttons while in UI
+                prev_nespad_state = nespad_state;
+                goto skip_gamepad_emulation;
+            }
+            
+            prev_nespad_state = nespad_state;
+            
             mii_bank_t *sw = &g_mii.bank[MII_BANK_SW];
             // Map NES buttons + keyboard modifiers to Apple II buttons:
             // NES A/B or Left Alt -> Open Apple (Button 0, $C061)
@@ -647,6 +723,8 @@ int main() {
             
             g_mii.analog.v[0].value = joy_x;
             g_mii.analog.v[1].value = joy_y;
+            
+            skip_gamepad_emulation:;  // Label for skipping when UI is visible
         }
         uint32_t input_end = time_us_32();
         total_input_time += (input_end - input_start);
