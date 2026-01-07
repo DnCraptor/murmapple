@@ -242,6 +242,32 @@ static void draw_border(uint8_t *fb, int fb_width, int x, int y, int w, int h) {
     draw_rect(fb, fb_width, x + w - 1, y, 1, h, COLOR_BORDER);
 }
 
+// Draw a scrollbar on the right side
+// x, y: position of scrollbar area
+// h: height of scrollbar area
+// total_items: total number of items
+// visible_items: number of visible items
+// scroll_pos: current scroll position (first visible item index)
+static void draw_scrollbar(uint8_t *fb, int fb_width, int x, int y, int h, int total_items, int visible_items, int scroll_pos) {
+    if (total_items <= visible_items) {
+        return;  // No scrollbar needed
+    }
+    
+    // Draw scrollbar track (dim)
+    draw_rect(fb, fb_width, x, y, 4, h, COLOR_BG);
+    draw_rect(fb, fb_width, x, y, 1, h, 8);  // Dim gray track
+    
+    // Calculate thumb position and size
+    int thumb_h = (h * visible_items) / total_items;
+    if (thumb_h < 8) thumb_h = 8;  // Minimum thumb size
+    
+    int max_scroll = total_items - visible_items;
+    int thumb_y = y + ((h - thumb_h) * scroll_pos) / max_scroll;
+    
+    // Draw thumb (bright)
+    draw_rect(fb, fb_width, x, thumb_y, 4, thumb_h, COLOR_BORDER);
+}
+
 void disk_ui_init(void) {
     ui_state = DISK_UI_HIDDEN;
     selected_drive = 0;
@@ -558,8 +584,9 @@ void disk_ui_render(uint8_t *framebuffer, int width, int height) {
         }
         draw_menu_item(framebuffer, width, content_x, y, content_width, drive2_text, max_chars, drive == 1);
         
-        // Instructions below dialog border
+        // Instructions below dialog border - clear area first
         int footer_y = UI_Y + UI_HEIGHT + 4;
+        draw_rect(framebuffer, width, UI_X, footer_y, UI_WIDTH, LINE_HEIGHT, COLOR_BG);
         draw_string(framebuffer, width, content_x, footer_y, "[1/2] Select  [Enter] OK  [Esc] Cancel", COLOR_TEXT);
         
     } else if (state == DISK_UI_SELECT_FILE) {
@@ -576,31 +603,31 @@ void disk_ui_render(uint8_t *framebuffer, int width, int height) {
         } else {
             // Calculate visible range
             int visible = (g_disk_count < MAX_VISIBLE) ? g_disk_count : MAX_VISIBLE;
-            
-            // Show scroll indicator if needed
-            if (scroll > 0) {
-                draw_string(framebuffer, width, content_x + content_width - 18, y - LINE_HEIGHT, "^", COLOR_TEXT);
-            }
+            int list_height = visible * LINE_HEIGHT;
             
             for (int i = 0; i < visible; i++) {
                 int idx = scroll + i;
                 if (idx >= g_disk_count) break;
                 
                 bool is_selected = (idx == sel_file);
-                draw_menu_item(framebuffer, width, content_x, y, content_width, 
-                              g_disk_list[idx].filename, max_chars, is_selected);
+                // Leave room for scrollbar (6 pixels)
+                draw_menu_item(framebuffer, width, content_x, y, content_width - 8, 
+                              g_disk_list[idx].filename, max_chars - 2, is_selected);
                 y += LINE_HEIGHT;
             }
             
-            // Show scroll indicator if more items below
-            if (scroll + visible < g_disk_count) {
-                draw_string(framebuffer, width, content_x + content_width - 18, y, "v", COLOR_TEXT);
+            // Draw scrollbar if needed
+            if (g_disk_count > MAX_VISIBLE) {
+                int scrollbar_x = UI_X + UI_WIDTH - UI_PADDING - 4;
+                draw_scrollbar(framebuffer, width, scrollbar_x, content_y, list_height, 
+                              g_disk_count, visible, scroll);
             }
         }
         
-        // Instructions below dialog border
+        // Instructions below dialog border - clear area first
         int footer_y = UI_Y + UI_HEIGHT + 4;
-        draw_string(framebuffer, width, content_x, footer_y, "[Up/Down] Select  [Enter] OK  [Esc] Back", COLOR_TEXT);
+        draw_rect(framebuffer, width, UI_X, footer_y, UI_WIDTH, LINE_HEIGHT, COLOR_BG);
+        draw_string(framebuffer, width, content_x, footer_y, "[Up/Dn] Select  [Enter] OK  [Esc] Back", COLOR_TEXT);
         
     } else if (state == DISK_UI_SELECT_ACTION) {
         // Action selection
@@ -631,9 +658,10 @@ void disk_ui_render(uint8_t *framebuffer, int width, int height) {
         draw_menu_item(framebuffer, width, content_x + 10, y, content_width - 20,
                       "Cancel", max_chars - 4, sel_action == 2);
         
-        // Instructions below dialog border
+        // Instructions below dialog border - clear area first
         int footer_y = UI_Y + UI_HEIGHT + 4;
-        draw_string(framebuffer, width, content_x, footer_y, "[Up/Down] Select  [Enter] OK  [Esc] Back", COLOR_TEXT);
+        draw_rect(framebuffer, width, UI_X, footer_y, UI_WIDTH, LINE_HEIGHT, COLOR_BG);
+        draw_string(framebuffer, width, content_x, footer_y, "[Up/Dn] Select  [Enter] OK  [Esc] Back", COLOR_TEXT);
     }
     
     ui_dirty = false;
