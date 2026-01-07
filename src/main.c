@@ -617,16 +617,33 @@ int main() {
             mii_bank_poke(sw, 0xc063, btn2);
             
             // Map NES D-pad to Apple II joystick
-            // (Keyboard arrows work as keyboard input, not joystick)
+            // For paddle/analog games like Arkanoid, we use gradual movement
+            // instead of snapping to extremes, as these games rely on analog control.
             // Paddle 0 = X axis (left/right): 0=left, 127=center, 255=right
             // Paddle 1 = Y axis (up/down): 0=up, 255=down
-            uint8_t joy_x = 127;  // center
-            uint8_t joy_y = 127;  // center
-            // NES D-pad only - arrows go through as keyboard
-            if (nespad_state & DPAD_LEFT)  joy_x = 0;
-            if (nespad_state & DPAD_RIGHT) joy_x = 255;
-            if (nespad_state & DPAD_UP)    joy_y = 0;
-            if (nespad_state & DPAD_DOWN)  joy_y = 255;
+            static uint8_t joy_x = 127;  // Persistent X position
+            static uint8_t joy_y = 127;  // Persistent Y position
+            
+            // NES D-pad controls - gradual movement for paddle games
+            // Speed: ~4 per frame = full range in ~32 frames (~0.5 sec)
+            #define PADDLE_SPEED 4
+            
+            if (nespad_state & DPAD_LEFT) {
+                if (joy_x > PADDLE_SPEED) joy_x -= PADDLE_SPEED;
+                else joy_x = 0;
+            }
+            if (nespad_state & DPAD_RIGHT) {
+                if (joy_x < 255 - PADDLE_SPEED) joy_x += PADDLE_SPEED;
+                else joy_x = 255;
+            }
+            if (nespad_state & DPAD_UP) {
+                if (joy_y > PADDLE_SPEED) joy_y -= PADDLE_SPEED;
+                else joy_y = 0;
+            }
+            if (nespad_state & DPAD_DOWN) {
+                if (joy_y < 255 - PADDLE_SPEED) joy_y += PADDLE_SPEED;
+                else joy_y = 255;
+            }
             
             g_mii.analog.v[0].value = joy_x;
             g_mii.analog.v[1].value = joy_y;
