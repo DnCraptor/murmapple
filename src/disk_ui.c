@@ -405,13 +405,18 @@ bool disk_ui_handle_key(uint8_t key) {
         case 0x08:  // Left arrow / backspace
         case 0x0B:  // Up arrow
             if (ui_state == DISK_UI_SELECT_DRIVE) {
-                if (selected_drive != 0) {
-                    selected_drive = 0;
-                    ui_dirty = true;
-                }
+                // Wrap around: 0 -> 1, 1 -> 0
+                selected_drive = 1 - selected_drive;
+                ui_dirty = true;
             } else if (ui_state == DISK_UI_SELECT_FILE) {
-                if (selected_file > 0) {
-                    selected_file--;
+                if (g_disk_count > 0) {
+                    if (selected_file > 0) {
+                        selected_file--;
+                    } else {
+                        // Wrap to last item
+                        selected_file = g_disk_count - 1;
+                        scroll_offset = (g_disk_count > MAX_VISIBLE) ? g_disk_count - MAX_VISIBLE : 0;
+                    }
                     if (selected_file < scroll_offset) {
                         scroll_offset = selected_file;
                     }
@@ -420,8 +425,10 @@ bool disk_ui_handle_key(uint8_t key) {
             } else if (ui_state == DISK_UI_SELECT_ACTION) {
                 if (selected_action > 0) {
                     selected_action--;
-                    ui_dirty = true;
+                } else {
+                    selected_action = 2;  // Wrap to Cancel
                 }
+                ui_dirty = true;
             }
             handled = true;
             break;
@@ -429,13 +436,18 @@ bool disk_ui_handle_key(uint8_t key) {
         case 0x15:  // Right arrow
         case 0x0A:  // Down arrow
             if (ui_state == DISK_UI_SELECT_DRIVE) {
-                if (selected_drive != 1) {
-                    selected_drive = 1;
-                    ui_dirty = true;
-                }
+                // Wrap around: 0 -> 1, 1 -> 0
+                selected_drive = 1 - selected_drive;
+                ui_dirty = true;
             } else if (ui_state == DISK_UI_SELECT_FILE) {
-                if (selected_file < g_disk_count - 1) {
-                    selected_file++;
+                if (g_disk_count > 0) {
+                    if (selected_file < g_disk_count - 1) {
+                        selected_file++;
+                    } else {
+                        // Wrap to first item
+                        selected_file = 0;
+                        scroll_offset = 0;
+                    }
                     if (selected_file >= scroll_offset + MAX_VISIBLE) {
                         scroll_offset = selected_file - MAX_VISIBLE + 1;
                     }
@@ -444,8 +456,10 @@ bool disk_ui_handle_key(uint8_t key) {
             } else if (ui_state == DISK_UI_SELECT_ACTION) {
                 if (selected_action < 2) {
                     selected_action++;
-                    ui_dirty = true;
+                } else {
+                    selected_action = 0;  // Wrap to Boot
                 }
+                ui_dirty = true;
             }
             handled = true;
             break;
@@ -544,8 +558,8 @@ void disk_ui_render(uint8_t *framebuffer, int width, int height) {
         }
         draw_menu_item(framebuffer, width, content_x, y, content_width, drive2_text, max_chars, drive == 1);
         
-        // Instructions at bottom
-        int footer_y = UI_Y + UI_HEIGHT - LINE_HEIGHT - UI_PADDING;
+        // Instructions below dialog border
+        int footer_y = UI_Y + UI_HEIGHT + 4;
         draw_string(framebuffer, width, content_x, footer_y, "[1/2] Select  [Enter] OK  [Esc] Cancel", COLOR_TEXT);
         
     } else if (state == DISK_UI_SELECT_FILE) {
@@ -584,8 +598,8 @@ void disk_ui_render(uint8_t *framebuffer, int width, int height) {
             }
         }
         
-        // Instructions at bottom
-        int footer_y = UI_Y + UI_HEIGHT - LINE_HEIGHT - UI_PADDING;
+        // Instructions below dialog border
+        int footer_y = UI_Y + UI_HEIGHT + 4;
         draw_string(framebuffer, width, content_x, footer_y, "[Up/Down] Select  [Enter] OK  [Esc] Back", COLOR_TEXT);
         
     } else if (state == DISK_UI_SELECT_ACTION) {
@@ -617,8 +631,8 @@ void disk_ui_render(uint8_t *framebuffer, int width, int height) {
         draw_menu_item(framebuffer, width, content_x + 10, y, content_width - 20,
                       "Cancel", max_chars - 4, sel_action == 2);
         
-        // Instructions at bottom
-        int footer_y = UI_Y + UI_HEIGHT - LINE_HEIGHT - UI_PADDING;
+        // Instructions below dialog border
+        int footer_y = UI_Y + UI_HEIGHT + 4;
         draw_string(framebuffer, width, content_x, footer_y, "[Up/Down] Select  [Enter] OK  [Esc] Back", COLOR_TEXT);
     }
     

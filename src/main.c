@@ -169,6 +169,8 @@ static void process_keyboard(void) {
             // If disk UI is visible, send keys to it
             if (disk_ui_is_visible()) {
                 disk_ui_handle_key(key);
+                currently_held_key = key;
+                key_hold_frames = 0;
                 continue;
             }
             
@@ -194,11 +196,16 @@ static void process_keyboard(void) {
         if (key_hold_frames > KEY_REPEAT_INITIAL_DELAY) {
             uint32_t frames_since_delay = key_hold_frames - KEY_REPEAT_INITIAL_DELAY;
             if ((frames_since_delay % KEY_REPEAT_RATE) == 0) {
-                mii_bank_t *sw = &g_mii.bank[MII_BANK_SW];
-                uint8_t strobe = mii_bank_peek(sw, 0xc010);
-                if (!(strobe & 0x80)) {
-                    // Strobe is clear, game processed the key - re-latch
-                    mii_keypress(&g_mii, currently_held_key);
+                // If disk UI is visible, repeat keys there
+                if (disk_ui_is_visible()) {
+                    disk_ui_handle_key(currently_held_key);
+                } else {
+                    mii_bank_t *sw = &g_mii.bank[MII_BANK_SW];
+                    uint8_t strobe = mii_bank_peek(sw, 0xc010);
+                    if (!(strobe & 0x80)) {
+                        // Strobe is clear, game processed the key - re-latch
+                        mii_keypress(&g_mii, currently_held_key);
+                    }
                 }
             }
         }
