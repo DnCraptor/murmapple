@@ -82,9 +82,14 @@ extern bool ps2kbd_is_reset_combo(void);  // Ctrl+Alt+Delete pressed
 // Keyboard modifier bits (from hid_codes.h)
 #define KEYBOARD_MODIFIER_LEFTALT    (1 << 2)
 #define KEYBOARD_MODIFIER_RIGHTALT   (1 << 6)
+#define KEYBOARD_MODIFIER_LEFTCTRL   (1 << 0)
+#define KEYBOARD_MODIFIER_RIGHTCTRL  (1 << 4)
 
 // NES/SNES gamepad interface
 #include "nespad/nespad.h"
+
+// USB HID keyboard/gamepad interface
+#include "usbhid/usbhid_wrapper.h"
 
 // Flash timing configuration for overclocking
 #define FLASH_MAX_FREQ_MHZ 88
@@ -159,6 +164,7 @@ static void process_keyboard(void) {
     int pressed;
     unsigned char key;
     
+    // Process PS/2 keyboard events
     while (ps2kbd_get_key(&pressed, &key)) {
         if (pressed) {
             // Check for F11 - disk selector toggle
@@ -187,6 +193,37 @@ static void process_keyboard(void) {
             }
         }
     }
+    
+#ifdef USB_HID_ENABLED
+    // Process USB HID keyboard events (same logic as PS/2)
+    while (usbhid_wrapper_get_key(&pressed, &key)) {
+        if (pressed) {
+            // Check for F11 - disk selector toggle
+            if (key == KEY_F11) {
+                disk_ui_toggle();
+                continue;
+            }
+            
+            // If disk UI is visible, send keys to it
+            if (disk_ui_is_visible()) {
+                disk_ui_handle_key(key);
+                currently_held_key = key;
+                key_hold_frames = 0;
+                continue;
+            }
+            
+            // Normal key - send to emulator and track as held
+            mii_keypress(&g_mii, key);
+            currently_held_key = key;
+            key_hold_frames = 0;
+        } else {
+            if (key == currently_held_key) {
+                currently_held_key = 0;
+                key_hold_frames = 0;
+            }
+        }
+    }
+#endif
     
     // Re-latch held key with proper repeat timing (like real Apple II keyboard)
     // Initial delay before repeat, then steady repeat rate
@@ -438,6 +475,13 @@ int main() {
         printf("NES gamepad init failed\n");
     }
     
+    // Initialize USB HID keyboard/gamepad (if enabled)
+#ifdef USB_HID_ENABLED
+    printf("Initializing USB HID Host...\n");
+    usbhid_wrapper_init();
+    printf("USB HID Host initialized\n");
+#endif
+    
     // Initialize SD card and scan for disk images
     printf("Initializing SD card and disk images...\n");
     if (disk_loader_init() == 0) {
@@ -600,9 +644,18 @@ int main() {
         uint32_t input_start = time_us_32();
         ps2kbd_tick();
         
-        // Check for Ctrl+Alt+Delete reset combo
+#ifdef USB_HID_ENABLED
+        // Poll USB HID devices
+        usbhid_wrapper_poll();
+#endif
+        
+        // Check for Ctrl+Alt+Delete reset combo (PS/2 keyboard)
         static bool reset_combo_active = false;
-        if (ps2kbd_is_reset_combo()) {
+        if (ps2kbd_is_reset_combo()
+#ifdef USB_HID_ENABLED
+            || usbhid_wrapper_is_reset_combo()
+#endif
+        ) {
             if (!reset_combo_active) {
                 reset_combo_active = true;
                 printf("Reset combo detected (Ctrl+Alt+Delete)\n");
@@ -616,23 +669,30 @@ int main() {
         
         // Poll NES gamepad and update Apple II buttons
         nespad_read();
+        
+        // Merge USB gamepad state with NES gamepad state
+        uint32_t combined_gamepad_state = nespad_state;
+#ifdef USB_HID_ENABLED
+        combined_gamepad_state |= usbhid_wrapper_get_gamepad_state();
+#endif
+        
         {
             // Track previous gamepad state for edge detection
-            static uint32_t prev_nespad_state = 0;
+            static uint32_t prev_gamepad_state = 0;
             static uint32_t gamepad_hold_frames = 0;
             static uint32_t gamepad_held_button = 0;
             static bool gamepad_reset_combo_active = false;
-            uint32_t nespad_pressed = nespad_state & ~prev_nespad_state;  // Just pressed this frame
+            uint32_t gamepad_pressed = combined_gamepad_state & ~prev_gamepad_state;  // Just pressed this frame
             
             // Check for Start+A+B reset combo
-            if ((nespad_state & (DPAD_START | DPAD_A | DPAD_B)) == (DPAD_START | DPAD_A | DPAD_B)) {
+            if ((combined_gamepad_state & (DPAD_START | DPAD_A | DPAD_B)) == (DPAD_START | DPAD_A | DPAD_B)) {
                 if (!gamepad_reset_combo_active) {
                     gamepad_reset_combo_active = true;
                     printf("Reset combo detected (Start+A+B)\n");
                     mii_reset(&g_mii, true);
                 }
                 // Skip all gamepad processing while reset combo is held
-                prev_nespad_state = nespad_state;
+                prev_gamepad_state = combined_gamepad_state;
                 goto skip_gamepad_emulation;
             } else {
                 gamepad_reset_combo_active = false;
@@ -643,7 +703,7 @@ int main() {
             #define GAMEPAD_REPEAT_RATE 4      // ~67ms between repeats
             
             // SELECT button toggles disk UI (like F11)
-            if (nespad_pressed & DPAD_SELECT) {
+            if (gamepad_pressed & DPAD_SELECT) {
                 disk_ui_toggle();
             }
             
@@ -651,25 +711,25 @@ int main() {
             if (disk_ui_is_visible()) {
                 // Track which D-pad direction is held for repeat
                 uint32_t dpad_mask = DPAD_UP | DPAD_DOWN | DPAD_LEFT | DPAD_RIGHT;
-                uint32_t dpad_held = nespad_state & dpad_mask;
+                uint32_t dpad_held = combined_gamepad_state & dpad_mask;
                 
                 // Handle initial press
-                if (nespad_pressed & DPAD_UP) {
+                if (gamepad_pressed & DPAD_UP) {
                     disk_ui_handle_key(0x0B);
                     gamepad_held_button = DPAD_UP;
                     gamepad_hold_frames = 0;
                 }
-                if (nespad_pressed & DPAD_DOWN) {
+                if (gamepad_pressed & DPAD_DOWN) {
                     disk_ui_handle_key(0x0A);
                     gamepad_held_button = DPAD_DOWN;
                     gamepad_hold_frames = 0;
                 }
-                if (nespad_pressed & DPAD_LEFT) {
+                if (gamepad_pressed & DPAD_LEFT) {
                     disk_ui_handle_key(0x08);
                     gamepad_held_button = DPAD_LEFT;
                     gamepad_hold_frames = 0;
                 }
-                if (nespad_pressed & DPAD_RIGHT) {
+                if (gamepad_pressed & DPAD_RIGHT) {
                     disk_ui_handle_key(0x15);
                     gamepad_held_button = DPAD_RIGHT;
                     gamepad_hold_frames = 0;
@@ -693,20 +753,20 @@ int main() {
                 }
                 
                 // A button = Enter (select) - no repeat
-                if (nespad_pressed & DPAD_A) {
+                if (gamepad_pressed & DPAD_A) {
                     disk_ui_handle_key(0x0D);
                 }
                 // B button = Escape (cancel/back) - no repeat
-                if (nespad_pressed & DPAD_B) {
+                if (gamepad_pressed & DPAD_B) {
                     disk_ui_handle_key(0x1B);
                 }
                 
                 // Don't update joystick/buttons while in UI
-                prev_nespad_state = nespad_state;
+                prev_gamepad_state = combined_gamepad_state;
                 goto skip_gamepad_emulation;
             }
             
-            prev_nespad_state = nespad_state;
+            prev_gamepad_state = combined_gamepad_state;
             
             mii_bank_t *sw = &g_mii.bank[MII_BANK_SW];
             // Map NES buttons + keyboard modifiers to Apple II buttons:
@@ -714,9 +774,12 @@ int main() {
             // NES A/B or Right Alt -> Closed Apple (Button 1, $C062)
             // NES Start -> Button 2 ($C063)
             uint8_t mods = ps2kbd_get_modifiers();
-            uint8_t btn0 = (nespad_state & (DPAD_A | DPAD_B)) || (mods & KEYBOARD_MODIFIER_LEFTALT) ? 0x80 : 0x00;
-            uint8_t btn1 = (nespad_state & (DPAD_A | DPAD_B)) || (mods & KEYBOARD_MODIFIER_RIGHTALT) ? 0x80 : 0x00;
-            uint8_t btn2 = (nespad_state & DPAD_START) ? 0x80 : 0x00;
+#ifdef USB_HID_ENABLED
+            mods |= usbhid_wrapper_get_modifiers();
+#endif
+            uint8_t btn0 = (combined_gamepad_state & (DPAD_A | DPAD_B)) || (mods & KEYBOARD_MODIFIER_LEFTALT) ? 0x80 : 0x00;
+            uint8_t btn1 = (combined_gamepad_state & (DPAD_A | DPAD_B)) || (mods & KEYBOARD_MODIFIER_RIGHTALT) ? 0x80 : 0x00;
+            uint8_t btn2 = (combined_gamepad_state & DPAD_START) ? 0x80 : 0x00;
             mii_bank_poke(sw, 0xc061, btn0);
             mii_bank_poke(sw, 0xc062, btn1);
             mii_bank_poke(sw, 0xc063, btn2);
@@ -733,19 +796,19 @@ int main() {
             // Speed: ~4 per frame = full range in ~32 frames (~0.5 sec)
             #define PADDLE_SPEED 4
             
-            if (nespad_state & DPAD_LEFT) {
+            if (combined_gamepad_state & DPAD_LEFT) {
                 if (joy_x > PADDLE_SPEED) joy_x -= PADDLE_SPEED;
                 else joy_x = 0;
             }
-            if (nespad_state & DPAD_RIGHT) {
+            if (combined_gamepad_state & DPAD_RIGHT) {
                 if (joy_x < 255 - PADDLE_SPEED) joy_x += PADDLE_SPEED;
                 else joy_x = 255;
             }
-            if (nespad_state & DPAD_UP) {
+            if (combined_gamepad_state & DPAD_UP) {
                 if (joy_y > PADDLE_SPEED) joy_y -= PADDLE_SPEED;
                 else joy_y = 0;
             }
-            if (nespad_state & DPAD_DOWN) {
+            if (combined_gamepad_state & DPAD_DOWN) {
                 if (joy_y < 255 - PADDLE_SPEED) joy_y += PADDLE_SPEED;
                 else joy_y = 255;
             }

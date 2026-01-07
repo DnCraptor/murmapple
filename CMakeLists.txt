@@ -30,6 +30,10 @@ else()  # M2
     set(I2S_CLOCK_PIN_BASE "10")
 endif()
 
+# USB HID Host support (keyboard and gamepad via USB)
+# When enabled, USB CDC stdio is disabled!
+option(USB_HID_ENABLED "Enable USB HID Host for keyboard/gamepad" OFF)
+
 message(STATUS "murmapple - Apple IIe Emulator for RP2350")
 message(STATUS "Board: ${BOARD_VARIANT}, CPU: ${CPU_SPEED} MHz, PSRAM: ${PSRAM_SPEED} MHz, Voltage: ${CPU_VOLTAGE}")
 message(STATUS "I2S Audio: DATA=${I2S_DATA_PIN}, CLK_BASE=${I2S_CLOCK_PIN_BASE}")
@@ -57,6 +61,7 @@ endif()
 add_subdirectory(drivers/ps2kbd)
 add_subdirectory(drivers/fatfs)
 add_subdirectory(drivers/sdcard)
+add_subdirectory(drivers/usbhid)
 
 # Create a library for drivers
 add_library(drivers
@@ -152,10 +157,17 @@ target_link_libraries(murmapple
     ps2kbd
     sdcard
     fatfs
+    usbhid
 )
 
-# Enable USB serial output for debugging
-pico_enable_stdio_usb(murmapple 1)
+# USB CDC stdio: enabled for debugging, but disabled when USB HID is enabled
+# (USB port can only be Host OR Device, not both)
+if(USB_HID_ENABLED)
+    pico_enable_stdio_usb(murmapple 0)
+    message(STATUS "USB CDC stdio disabled (USB HID Host is enabled)")
+else()
+    pico_enable_stdio_usb(murmapple 1)
+endif()
 pico_enable_stdio_uart(murmapple 0)
 
 # Create UF2 output
