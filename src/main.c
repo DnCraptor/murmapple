@@ -28,6 +28,7 @@
 #include "mii_slot.h"
 #include "mii_disk2.h"
 #include "disk_loader.h"
+#include "mii_startscreen.h"
 #include "disk_ui.h"
 #include "debug_log.h"
 
@@ -588,6 +589,23 @@ int main() {
     MII_DEBUG_PRINTF("Starting HDMI output...\n");
     startVIDEO(0);
     MII_DEBUG_PRINTF("HDMI started\n");
+    
+    // Display start screen with system information
+    MII_DEBUG_PRINTF("Displaying start screen...\n");
+    uint32_t board_num = 1;  // Default to M1
+#ifdef BOARD_M2
+    board_num = 2;
+#endif
+    
+    mii_startscreen_info_t screen_info = {
+        .title = "MurmApple",
+        .subtitle = "Apple IIe Emulator",
+        .version = "v1.00",
+        .cpu_mhz = CPU_CLOCK_MHZ,
+        .psram_mhz = PSRAM_MAX_FREQ_MHZ,
+        .board_variant = board_num,
+    };
+    mii_startscreen_show(&screen_info);
     
     // Let ROM boot naturally
     MII_DEBUG_PRINTF("Running ROM boot sequence (1M cycles)...\n");

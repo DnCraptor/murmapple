@@ -95,6 +95,7 @@ add_executable(murmapple
     src/mii_rom_iiee_video.c
     src/disk_loader.c
     src/disk_ui.c
+    src/mii_startscreen.c
     src/mii_analog.c
     # Disk drive support
     src/mii_slot.c

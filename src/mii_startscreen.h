@@ -1,0 +1,28 @@
+/*
+ * mii_startscreen.h
+ *
+ * Start screen display for MurmApple before emulator initialization
+ * Shows system information and waits for user input to proceed
+ */
+
+#ifndef MII_STARTSCREEN_H
+#define MII_STARTSCREEN_H
+
+#include <stdint.h>
+
+typedef struct {
+    const char *title;
+    const char *subtitle;
+    const char *version;
+    uint32_t cpu_mhz;
+    uint32_t psram_mhz;
+    uint8_t board_variant;
+} mii_startscreen_info_t;
+
+/**
+ * Display a start screen with system information
+ * Returns 0 when ready to proceed (user presses a key or auto-timeout)
+ */
+int mii_startscreen_show(mii_startscreen_info_t *info);
+
+#endif // MII_STARTSCREEN_H
