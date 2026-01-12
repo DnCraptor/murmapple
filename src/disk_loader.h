@@ -13,7 +13,9 @@
 #include <stdbool.h>
 
 // Maximum number of disk images we can list
-#define MAX_DISK_IMAGES 500
+// 500 == 36000
+//#define MAX_DISK_IMAGES 500
+#define MAX_DISK_IMAGES 10
 
 // Maximum filename length
 #define MAX_FILENAME_LEN 64

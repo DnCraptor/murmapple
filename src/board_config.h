@@ -63,12 +63,17 @@
 
 // Runtime function to get PSRAM pin based on chip package
 static inline uint get_psram_pin(void) {
+#if PICO_RP2040
+    return 0;
+#endif
+#if PICO_RP2350
     uint32_t package_sel = *((io_ro_32*)(SYSINFO_BASE + SYSINFO_PACKAGE_SEL_OFFSET));
     if (package_sel & 1) {
         return PSRAM_PIN_RP2350A;
     } else {
         return PSRAM_PIN_RP2350B;
     }
+#endif
 }
 
 //=============================================================================

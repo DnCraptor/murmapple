@@ -10,7 +10,9 @@
 #include "pico/multicore.h"
 #include "hardware/vreg.h"
 #include "hardware/clocks.h"
+#if PICO_RP2350
 #include "hardware/structs/qmi.h"
+#endif
 #include "hardware/dma.h"  // Include DMA header early before mii_sw.h
 
 #include "board_config.h"
@@ -60,8 +62,8 @@ int mii_cpu_disasm_one(char *buf, size_t buflen, mii_cpu_t *cpu,
 }
 
 // External ROM data (from ROM files)
-extern const uint8_t mii_rom_iiee[];
-extern const uint8_t mii_rom_iiee_video[];
+extern const uint8_t mii_rom_iiee[16384];
+extern const uint8_t mii_rom_iiee_video[4096];
 
 // HDMI framebuffer dimensions (driver line-doubles to 640x480)
 #undef HDMI_WIDTH
@@ -102,6 +104,7 @@ extern bool ps2kbd_is_reset_combo(void);  // Ctrl+Alt+Delete pressed
 // USB HID keyboard/gamepad interface
 #include "usbhid/usbhid_wrapper.h"
 
+#if PICO_RP2350
 // Flash timing configuration for overclocking
 #define FLASH_MAX_FREQ_MHZ 88
 
@@ -123,6 +126,7 @@ static void __no_inline_not_in_flash_func(set_flash_timings)(int cpu_mhz) {
                         rxdelay << QMI_M0_TIMING_RXDELAY_LSB |
                         divisor << QMI_M0_TIMING_CLKDIV_LSB;
 }
+#endif
 
 // Global emulator state (non-static for access from mii_speaker_click stub)
 mii_t g_mii;
@@ -350,16 +354,10 @@ static mii_rom_t main_rom_struct = {
 
 // Load ROM into memory bank and register with ROM system
 static void load_rom(mii_t *mii, const uint8_t *rom, size_t len, uint16_t addr) {
-    mii_bank_t *rom_bank = &mii->bank[MII_BANK_ROM];
-    for (size_t i = 0; i < len; i++) {
-        rom_bank->mem[rom_bank->mem_offset + addr - rom_bank->base + i] = rom[i];
-    }
-    
     // Register with the ROM system so mii_rom_get("iiee") works
     main_rom_struct.rom = rom;
     main_rom_struct.len = len;
     mii_rom_register(&main_rom_struct);
-    
     MII_DEBUG_PRINTF("Loaded %zu bytes ROM at $%04X\n", len, addr);
 }
 
@@ -435,8 +433,10 @@ int main() {
     // Allocate HDMI framebuffer in SRAM (not PSRAM!) - DMA needs fast access
     MII_DEBUG_PRINTF("Allocating HDMI framebuffer in SRAM...\n");
     // Double-buffer to prevent tearing: one buffer scanned out by HDMI DMA, one rendered by core1.
-    g_hdmi_front_buffer = (uint8_t *)malloc(HDMI_WIDTH * HDMI_HEIGHT);
-    g_hdmi_back_buffer = (uint8_t *)malloc(HDMI_WIDTH * HDMI_HEIGHT);
+    static uint8_t b1[HDMI_WIDTH * HDMI_HEIGHT] = { 0 };
+    static uint8_t b2[HDMI_WIDTH * HDMI_HEIGHT] = { 0 };
+    g_hdmi_front_buffer = b1;
+    g_hdmi_back_buffer = b2;
     if (!g_hdmi_front_buffer || !g_hdmi_back_buffer) {
         MII_DEBUG_PRINTF("ERROR: Failed to allocate HDMI framebuffer\n");
         while (1) tight_loop_contents();

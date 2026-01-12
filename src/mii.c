@@ -28,6 +28,8 @@ _mii_cpu_direct_access_cb(
 
 mii_slot_drv_t * mii_slot_drv_list = NULL;
 
+extern const uint8_t mii_rom_iiee[16384];
+
 static const mii_bank_t	_mii_banks_init[MII_BANK_COUNT] = {
 	[MII_BANK_MAIN] = {
 		.name = "MAIN",
