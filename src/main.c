@@ -372,12 +372,14 @@ static void load_char_rom(mii_t *mii, const uint8_t *rom, size_t len) {
     }
 }
 
+
 int main() {
     // Overclock support: For speeds > 252 MHz, increase voltage first
 #if CPU_CLOCK_MHZ > 252
     vreg_disable_voltage_limit();
 #if PICO_RP2040
-    vreg_set_voltage(VREG_VOLTAGE_1_30);
+    hw_set_bits(&vreg_and_chip_reset_hw->vreg,
+                VREG_AND_CHIP_RESET_VREG_VSEL_BITS);
 #else
     vreg_set_voltage(CPU_VOLTAGE);
     set_flash_timings(CPU_CLOCK_MHZ);
@@ -385,14 +387,29 @@ int main() {
     sleep_ms(100);
 #endif
     
-    // Set system clock
+// Set system clock
+#if PICO_RP2040
+    set_sys_clock_khz(CPU_CLOCK_MHZ * 1000, true);
+#else
     if (!set_sys_clock_khz(CPU_CLOCK_MHZ * 1000, false)) {
         set_sys_clock_khz(252 * 1000, true);
     }
-    
+#endif
+
     // Initialize stdio (USB serial)
     stdio_init_all();
     
+#ifdef PICO_DEFAULT_LED_PIN
+    gpio_init(PICO_DEFAULT_LED_PIN);
+    gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
+    for (int i = 0; i < 6; i++) {
+        sleep_ms(33);
+        gpio_put(PICO_DEFAULT_LED_PIN, true);
+        sleep_ms(33);
+        gpio_put(PICO_DEFAULT_LED_PIN, false);
+    }
+#endif
+
     MII_DEBUG_PRINTF("\n\n");
     MII_DEBUG_PRINTF("=================================\n");
     MII_DEBUG_PRINTF("  MurmApple - Apple IIe on RP2350\n");
@@ -959,6 +976,5 @@ int main() {
          }
     #endif
     }
-    
     return 0;
 }

@@ -15,7 +15,7 @@ endif()
 cmake_minimum_required(VERSION 3.13)
 
 # Set board to Pico 2 (RP2350)
-set(PICO_BOARD pico2 CACHE STRING "Board type")
+set(PICO_BOARD pico CACHE STRING "Board type")
 
 # Board configuration variant (M1, M2)
 set(BOARD_VARIANT "M1" CACHE STRING "Board variant: M1 or M2")
@@ -85,7 +85,9 @@ endif()
 add_subdirectory(drivers/ps2kbd)
 add_subdirectory(drivers/fatfs)
 add_subdirectory(drivers/sdcard)
-add_subdirectory(drivers/usbhid)
+if(USB_HID_ENABLED)
+    add_subdirectory(drivers/usbhid)
+endif()
 
 # Create a library for drivers
 if (PSRAM_SPEED)
@@ -128,7 +130,6 @@ add_executable(murmapple
     src/mii_dd_stub.c
     src/mii_floppy.c
     src/mii_disk2.c
-    src/mii_disk2_lss_asm.S
     src/mii_dsk.c
     src/mii_nib.c
     src/mii_woz.c
@@ -143,7 +144,11 @@ add_executable(murmapple
 if (PICO_BOARD STREQUAL "pico")
     pico_define_boot_stage2(slower_boot2 ${PICO_DEFAULT_BOOT_STAGE2_FILE})
     target_compile_definitions(slower_boot2 PRIVATE PICO_FLASH_SPI_CLKDIV=4)
-    pico_set_boot_stage2(${PROJECT_NAME} slower_boot2)
+    pico_set_boot_stage2(murmapple slower_boot2)
+else() # RP2350 ASM-file:
+    add_executable(murmapple
+        src/mii_disk2_lss_asm.S
+    )
 endif()
 
 target_include_directories(murmapple PRIVATE
@@ -207,8 +212,11 @@ target_link_libraries(murmapple
     ps2kbd
     sdcard
     fatfs
-    usbhid
 )
+
+if(USB_HID_ENABLED)
+    target_link_libraries(murmapple usbhid)
+endif()
 
 # USB CDC stdio: enabled for debugging, but disabled when USB HID is enabled
 # (USB port can only be Host OR Device, not both)
