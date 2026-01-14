@@ -170,7 +170,7 @@ static const mii_palette_t palettes[] = {
  * the user... The set_video_mode function will synthetize the actual colors,
  * as well as the 'dim' variant use for artifacts.
  */
-static const mii_video_clut_t mii_base_clut = {
+const mii_video_clut_t mii_base_clut = {
 	.lores = {{
 		[0x0] = CI_BLACK,	[0x1] = CI_MAGENTA,	[0x2] = CI_DARKBLUE,[0x3] = CI_PURPLE,
 		[0x4] = CI_DARKGREEN,[0x5] = CI_GRAY1,	[0x6] = CI_BLUE,	[0x7] = CI_LIGHTBLUE,
@@ -211,16 +211,6 @@ static inline uint8_t reverse4(uint8_t b) {
 static inline uint8_t reverse8(uint8_t b) {
 	b = reverse4(b) << 4 | reverse4(b >> 4);
 	return b;
-}
-static inline uint16_t
-_mii_line_to_video_addr(
-		uint16_t addr,
-		uint8_t line)
-{
-	addr += ((line & 0x07) << 10) |
-				 (((line >> 3) & 7) << 7) |
-					((line >> 6) << 5) | ((line >> 6) << 3);
-	return addr;
 }
 
 static inline int
@@ -1445,7 +1435,7 @@ MII_MISH(video, _mii_mish_video);
  */
 
 // Map CI_* palette indices (desktop) to RP2350 palette indices (Apple II lores order)
-static const uint8_t rp2350_ci_to_hw[16] = {
+const uint8_t rp2350_ci_to_hw[16] = {
 	[CI_BLACK] = 0,
 	[CI_PURPLE] = 3,
 	[CI_GREEN] = 12,
@@ -1720,16 +1710,6 @@ mii_video_render_hires_rp2350(
 			b1 = b2;
 		}
 	}
-}
-
-static inline uint8_t
-_mii_get_1bits_rp2350(
-		const uint8_t *buffer,
-		int bit)
-{
-	int in_byte = bit / 8;
-	int in_bit = 7 - (bit % 8);
-	return (buffer[in_byte] >> in_bit) & 1;
 }
 
 static void __attribute__((hot))

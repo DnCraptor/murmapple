@@ -295,12 +295,14 @@ static uint8_t *main_mem;
 static uint8_t *aux_mem;
 static int flash;
 static bool is_dhgr;
+static bool color;
+static uint8_t dhires_c[16] __aligned(4) __scratch_x("dhires");
 
 static void __scratch_x() mii_video_render_text_line(uint32_t sw, int y) {
     register uint8_t *out = line_buffer;
     memset(out, 0, SCREEN_WIDTH);
     y -= 24;
-    if (y < 0 || y >= 192) {
+    if ((unsigned)y >= 192) {
         return;
     }
 
@@ -359,6 +361,55 @@ static void __scratch_x() mii_video_render_text_line(uint32_t sw, int y) {
     }
 }
 
+static void __scratch_x() mii_video_render_hires_line(int line) {
+    register uint8_t *out = line_buffer;
+    memset(out, 0, SCREEN_WIDTH);
+    line -= 24;
+    if ((unsigned)line >= 192) {
+        return;
+    }
+    register uint32_t line_addr = _mii_line_to_video_addr(base_addr, line);
+    if (!color) {
+        // Mono: combine MAIN/AUX 7-bit streams into 14-bit pixels (560 wide)
+        // Cache column data to avoid repeated memory lookups
+        register int8_t last_col = -1;
+        uint32_t ext = 0;
+        for (register int x = 0; x < 320; x++) {
+            register int src = (x * 7) >> 2; // 0..559
+            register int8_t col = src / 14;    // 0..39
+            if (col != last_col) {
+                ext = (aux_mem[line_addr + col] & 0x7f) |
+                        ((main_mem[line_addr + col] & 0x7f) << 7);
+                last_col = col;
+            }
+            out[x] = ((ext >> (src % 14)) & 1) ? 15 : 0;
+        }
+        return;
+    }
+    // Color: build a bit buffer for 80 bytes (AUX/MAIN interleaved)
+    uint8_t bits[71] = {0};
+    for (register int x = 0; x < 80; x++) {
+        register uint8_t b = (x & 1) ? main_mem[line_addr + (x >> 1)] : aux_mem[line_addr + (x >> 1)];
+        for (register int i = 0; i < 7; i++) {
+            register int out_index = 2 + (x * 7) + i;
+            bits[out_index >> 3] |= ((b >> i) & 1) << (7 - (out_index & 7));
+        }
+    }
+
+    for (register int x = 0; x < 320; x++) {
+        register int i = (x * 7) >> 2; // 0..559
+        register int d = 2 + i;
+        register uint8_t pixel =
+            (_mii_get_1bits_rp2350(bits, i + 3) << (3 - ((d + 3) & 3))) +
+            (_mii_get_1bits_rp2350(bits, i + 2) << (3 - ((d + 2) & 3))) +
+            (_mii_get_1bits_rp2350(bits, i + 1) << (3 - ((d + 1) & 3))) +
+            (_mii_get_1bits_rp2350(bits, i)     << (3 - (d & 3)));
+        out[x] = dhires_c[pixel & 0x0f];
+    }
+
+}
+
+
 static void __scratch_x() dma_handler_HDMI() {
     static uint32_t inx_buf_dma;
     static uint line = 0;
@@ -394,16 +445,19 @@ static void __scratch_x() dma_handler_HDMI() {
                 // DHGR requires: HIRES=1, TEXT=0, DHIRES=1, and either 80COL=1 or an3_mode indicates DHGR
                 // an3_mode: 0=40col text/lores, 1=DHGR color, 2=DHGR mono, 3=80col text
                 if (is_dhgr) {
-            //        mii_video_render_dhires_rp2350(mii, hdmi_buffer, 320);
+    memset(line_buffer, 2, SCREEN_WIDTH); // blue
+            //        mii_video_render_dhires_line(y);
                 } else {
-            //        mii_video_render_hires_rp2350(mii, hdmi_buffer, 320);
+                    mii_video_render_hires_line(y);
                 }
                 if (sw & M_SWMIXED) {
+    memset(line_buffer, 9, SCREEN_WIDTH); // orange
                     // Mixed mode: render bottom 4 text lines (lines 160-191)
                     // This overlays text on top of the HGR screen
             //        mii_video_render_text40_mixed_rp2350(mii, hdmi_buffer, 320);
                 }
             } else {
+    memset(line_buffer, 13, SCREEN_WIDTH); // yellow
                 // Lo-res graphics mode
             //    mii_video_render_lores_rp2350(mii, hdmi_buffer, 320);
             }
@@ -838,6 +892,9 @@ void graphics_restore_sync_colors(void) {
 // Wrappers for existing API
 void graphics_init(g_out g_out) {
     graphics_init_hdmi();
+    for(int8_t i = 0; i < 16; ++i) {
+        dhires_c[i] = rp2350_ci_to_hw[(uint8_t)mii_base_clut.dhires[i]];
+    }
 }
 
 void graphics_set_palette(uint8_t i, uint32_t color888) {
@@ -900,26 +957,6 @@ void set_palette(uint8_t n) {
     // Stub
 }
 
-static void mii_video_prep_text40(uint32_t sw, mii_t* mii, mii_video_t *video) {
-//    const uint8_t *char_rom = video->rom ? video->rom->rom : NULL;
-//    if (!char_rom) {
-//        return;
-//    }
-
-    main_mem = mii->bank[MII_BANK_MAIN].mem;
-    aux_mem  = mii->bank[MII_BANK_AUX_BASE].mem;
-
-    bool page2  = SWW_GETSTATE(sw, SW80STORE) ? 0 : SWW_GETSTATE(sw, SWPAGE2);
-    base_addr = 0x400 + (0x400 * page2);
-
- //   if (video->rom && video->rom->len > (4 * 1024) && video->rom_bank)
- //       rom_base = char_rom + (4 * 1024);
- //   else
- //       rom_base = char_rom;
-
-    flash = (video->frame_count & 0x10) ? -0x40 : 0x40;
-}
-
 void mii_video_prep_hdmi_frame() {
     mii_t* mii = &g_mii;
     mii_video_t *video = &mii->video;
@@ -932,27 +969,33 @@ void mii_video_prep_hdmi_frame() {
 	bool col80 = !!(sw & M_SW80COL);
 	bool dhires = !!(sw & M_SWDHIRES);
 	bool an3_mode = video->an3_mode == 1 || video->an3_mode == 2;
-	
+
+    main_mem = mii->bank[MII_BANK_MAIN].mem;
+    aux_mem  = mii->bank[MII_BANK_AUX_BASE].mem;
+
 	if (text_mode) {
 		// Pure text mode
-		mii_video_prep_text40(sw, mii, video);
+        base_addr = 0x400 + (0x400 * page2);
+        flash = (video->frame_count & 0x10) ? -0x40 : 0x40;
 	} else if (hires) {
 		// Hi-res graphics mode
 		// DHGR requires: HIRES=1, TEXT=0, DHIRES=1, and either 80COL=1 or an3_mode indicates DHGR
 		// an3_mode: 0=40col text/lores, 1=DHGR color, 2=DHGR mono, 3=80col text
 		is_dhgr = dhires && (col80 || an3_mode);
-        /*
 		if (is_dhgr) {
-			mii_video_render_dhires_rp2350(mii, hdmi_buffer, 320);
+//			mii_video_render_dhires_rp2350(mii, hdmi_buffer, 320);
 		} else {
-			mii_video_render_hires_rp2350(mii, hdmi_buffer, 320);
+        	// Apple II DHGR is 560x192. We render into 320x240 with 24px top margin.
+	        // Use nearest-neighbor horizontal resample: src_x = (x * 7) / 4.
+	        color = (mii->video.an3_mode != 0) && !mii->video.monochrome;
+        	base_addr = 0x2000 + (0x2000 * page2);
+//			mii_video_render_hires_rp2350(mii, hdmi_buffer, 320);
 		}
 		if (mixed) {
 			// Mixed mode: render bottom 4 text lines (lines 160-191)
 			// This overlays text on top of the HGR screen
-			mii_video_render_text40_mixed_rp2350(mii, hdmi_buffer, 320);
+//			mii_video_render_text40_mixed_rp2350(mii, hdmi_buffer, 320);
 		}
-        */
 	} else {
 		// Lo-res graphics mode
 	//	mii_video_render_lores_rp2350(mii, hdmi_buffer, 320);
