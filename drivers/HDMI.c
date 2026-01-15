@@ -122,6 +122,7 @@ static uint32_t last_check_irq = 0;
 #include "mii_rom.h"
 #include "mii_video.h"
 extern mii_t g_mii;
+volatile int lock_y = -1;
 
 // Debug function to get DMA IRQ count
 uint32_t hdmi_get_irq_count(void) {
@@ -287,223 +288,6 @@ static void pio_set_x(PIO pio, const int sm, uint32_t v) {
     pio_sm_exec(pio, sm, instr_mov);
 }
 
-static uint8_t line_buffer[SCREEN_WIDTH] __aligned(4) __scratch_x("line_buffer");
-extern uint8_t mii_rom_iiee_video[4096];
-extern uint8_t mii_ram[0x20000];
-static uint16_t base_addr;
-static uint8_t *main_mem;
-static uint8_t *aux_mem;
-static int flash;
-static bool is_dhgr;
-static bool color;
-static uint8_t dhires_c[16] __aligned(4) __scratch_y("dhires");
-// Color: build a bit buffer for 80 bytes (AUX/MAIN interleaved)
-static uint8_t bits[71] __aligned(4) __scratch_y("bits");
-
-static void __not_in_flash() mii_video_render_text_line(uint32_t sw, int y) {
-    uint8_t* __restrict out = line_buffer;
-    memset(out, 0, SCREEN_WIDTH);
-    y -= 24;
-    if ((unsigned)y >= 192) {
-        return;
-    }
-
-    register int row = y >> 3;           // 0..23
-    register int glyph_line = y & 7;     // 0..7 (какая строка внутри 8x8)
-
-    register bool altset = SWW_GETSTATE(sw, SWALTCHARSET);
-
-    // Apple II text memory is interleaved
-    register uint16_t line_addr = base_addr + (row & 7) * 0x80 + (row >> 3) * 0x28;
-    register uint8_t* rb = (uint8_t*)mii_rom_iiee_video;
-    if (!SWW_GETSTATE(sw, SW80COL)) {
-        // 40-column mode
-        for (register int x = 0; x < 40; x++) {
-            register uint8_t c = main_mem[line_addr + x];
-
-            // Flash handling
-            if (!altset && c >= 0x40 && c <= 0x7F)
-                c = (int)c + flash;
-
-            const register uint8_t *char_data = rb + (c << 3);
-
-            // Берём только одну строку глифа
-            register uint8_t bits = char_data[glyph_line];
-
-            // 7 пикселей + 1 padding 
-            *out++ = (bits & 0x01) ? 0 : 15;
-            *out++ = (bits & 0x02) ? 0 : 15;
-            *out++ = (bits & 0x04) ? 0 : 15;
-            *out++ = (bits & 0x08) ? 0 : 15;
-            *out++ = (bits & 0x10) ? 0 : 15;
-            *out++ = (bits & 0x20) ? 0 : 15;
-            *out++ = (bits & 0x40) ? 0 : 15;
-            *out++ = 0;  // 8th pixel padding
-        }
-    } else {
-        // 80-column mode
-        for (register int x = 0; x < 80; x++) {
-            register uint8_t c;
-            if (x & 1)
-                c = main_mem[line_addr + (x >> 1)];
-            else
-                c = aux_mem[line_addr + (x >> 1)];
-
-            if (!altset && c >= 0x40 && c <= 0x7F)
-                c = (int)c + flash;
-
-            const register uint8_t *char_data = rb + (c << 3);
-            register uint8_t bits = char_data[glyph_line];
-
-            *out++ = ((bits & 1) | ((bits >> 1) & 1)) ? 0 : 15;
-            *out++ = (((bits >> 2) & 1) | ((bits >> 3) & 1)) ? 0 : 15;
-            *out++ = (((bits >> 4) & 1) | ((bits >> 5) & 1)) ? 0 : 15;
-            *out++ = (((bits >> 6) & 1) | ((bits >> 7) & 1)) ? 0 : 15;
-        }
-    }
-}
-
-/* --- inline helpers --- */
-static inline uint8_t ror4(uint8_t v, uint8_t r)
-{
-    return (uint8_t)(((v >> r) | (v << (4 - r))) & 0x0F);
-}
-
-static inline
-uint8_t get_next_bit(
-        const uint8_t **p,
-        uint8_t *bit)
-{
-    uint8_t v = (uint8_t)((**p >> (7 - *bit)) & 1);
-    if (++(*bit) == 8) {
-        *bit = 0;
-        (*p)++;
-    }
-    return v;
-}
-
-/* --- рендер одной dhires-строки --- */
-static inline
-void render_dhires_line(void)
-{
-    uint8_t * __restrict out = line_buffer;
-
-    const uint8_t *p = bits;
-    uint8_t bit = 0;
-
-    /* 8-битное окно */
-    uint8_t win = 0;
-    win = (uint8_t)((win << 1) | get_next_bit(&p, &bit));
-    win = (uint8_t)((win << 1) | get_next_bit(&p, &bit));
-    win = (uint8_t)((win << 1) | get_next_bit(&p, &bit));
-    win = (uint8_t)((win << 1) | get_next_bit(&p, &bit));
-    win = (uint8_t)((win << 1) | get_next_bit(&p, &bit));
-    win = (uint8_t)((win << 1) | get_next_bit(&p, &bit));
-    win = (uint8_t)((win << 1) | get_next_bit(&p, &bit));
-    win = (uint8_t)((win << 1) | get_next_bit(&p, &bit));
-
-    /* i0 = 0 → d0 = 2 → m0 = 2 */
-    uint8_t m = 2;
-
-    for (int x = 0; x < 320; x++) {
-        uint8_t pixel = ror4((uint8_t)(win >> 4), m);
-        *out++ = dhires_c[pixel];
-
-        /* Δi: 1,2,2,2 */
-        if ((x & 3) == 0) {
-            win = (uint8_t)((win << 1) | get_next_bit(&p, &bit));
-            m = (uint8_t)((m + 1) & 3);
-        } else {
-            win = (uint8_t)((win << 1) | get_next_bit(&p, &bit));
-            win = (uint8_t)((win << 1) | get_next_bit(&p, &bit));
-            m = (uint8_t)((m + 2) & 3);
-        }
-    }
-}
-
-static void __not_in_flash() mii_video_render_hires_line(int line) {
-    uint8_t* __restrict out = line_buffer;
-    memset(out, 0, SCREEN_WIDTH);
-    line -= 24;
-    if ((unsigned)line >= 192) {
-        return;
-    }
-    register uint32_t line_addr = _mii_line_to_video_addr(base_addr, line);
-    if (!color) {
-        // Mono: combine MAIN/AUX 7-bit streams into 14-bit pixels (560 wide)
-        // Cache column data to avoid repeated memory lookups
-        register int8_t last_col = -1;
-        register uint32_t ext = 0;
-        for (register int x = 0; x < 320; x++) {
-            register int src = (x * 7) >> 2; // 0..559
-            register int8_t col = src / 14;    // 0..39
-            if (col != last_col) {
-                ext = (aux_mem[line_addr + col] & 0x7f) |
-                        ((main_mem[line_addr + col] & 0x7f) << 7);
-                last_col = col;
-            }
-            out[x] = ((ext >> (src % 14)) & 1) ? 15 : 0;
-        }
-        return;
-    }
-
-    /* -------------------- AUX (чётные x) -------------------- */
-    {
-        register uint8_t *src = aux_mem + line_addr;
-
-        register uint8_t *dst = bits + (2 >> 3);
-        register int8_t bit = 7 - (2 & 7);
-
-        for (register int k = 0; k < 40; k++) {
-            register uint8_t b = *src++;
-
-            /* 7 бит, развёртка */
-            *dst |= ((b >> 0) & 1) << bit; if (--bit < 0) { bit = 7; dst++; }
-            *dst |= ((b >> 1) & 1) << bit; if (--bit < 0) { bit = 7; dst++; }
-            *dst |= ((b >> 2) & 1) << bit; if (--bit < 0) { bit = 7; dst++; }
-            *dst |= ((b >> 3) & 1) << bit; if (--bit < 0) { bit = 7; dst++; }
-            *dst |= ((b >> 4) & 1) << bit; if (--bit < 0) { bit = 7; dst++; }
-            *dst |= ((b >> 5) & 1) << bit; if (--bit < 0) { bit = 7; dst++; }
-            *dst |= ((b >> 6) & 1) << bit; if (--bit < 0) { bit = 7; dst++; }
-
-            /* пропуск 7 бит (место для main) */
-            bit -= 7;
-            while (bit < 0) {
-                bit += 8;
-                dst++;
-            }
-        }
-    }
-
-    /* -------------------- MAIN (нечётные x) -------------------- */
-    {
-        register uint8_t *src = main_mem + line_addr;
-
-        register uint8_t *dst = bits + ((2 + 7) >> 3);
-        register int8_t bit = 7 - ((2 + 7) & 7);
-
-        for (register int k = 0; k < 40; k++) {
-            register uint8_t b = *src++;
-
-            *dst |= ((b >> 0) & 1) << bit; if (--bit < 0) { bit = 7; dst++; }
-            *dst |= ((b >> 1) & 1) << bit; if (--bit < 0) { bit = 7; dst++; }
-            *dst |= ((b >> 2) & 1) << bit; if (--bit < 0) { bit = 7; dst++; }
-            *dst |= ((b >> 3) & 1) << bit; if (--bit < 0) { bit = 7; dst++; }
-            *dst |= ((b >> 4) & 1) << bit; if (--bit < 0) { bit = 7; dst++; }
-            *dst |= ((b >> 5) & 1) << bit; if (--bit < 0) { bit = 7; dst++; }
-            *dst |= ((b >> 6) & 1) << bit; if (--bit < 0) { bit = 7; dst++; }
-
-            bit -= 7;
-            while (bit < 0) {
-                bit += 8;
-                dst++;
-            }
-        }
-    }
-    render_dhires_line();
-}
-
-
 static void __not_in_flash() dma_handler_HDMI() {
     static uint32_t inx_buf_dma;
     static uint line = 0;
@@ -527,44 +311,16 @@ static void __not_in_flash() dma_handler_HDMI() {
 
     if (line < mode.h_width ) {
         int y = line >> 1;
-        register uint8_t* input_buffer;
-        if (disk_ui_is_visible()) {
-            input_buffer = mii_ram + y * SCREEN_WIDTH;
-        } else {
-            register uint32_t sw = g_mii.sw_state;
-            if (sw & M_SWTEXT) { // text_mode
-                mii_video_render_text_line(sw, y);
-            } else if (sw & M_SWHIRES) { // hi res
-                // Hi-res graphics mode
-                // DHGR requires: HIRES=1, TEXT=0, DHIRES=1, and either 80COL=1 or an3_mode indicates DHGR
-                // an3_mode: 0=40col text/lores, 1=DHGR color, 2=DHGR mono, 3=80col text
-                if (is_dhgr) {
-    memset(line_buffer, 2, SCREEN_WIDTH); // blue
-            //        mii_video_render_dhires_line(y);
-                } else {
-                    mii_video_render_hires_line(y);
-                }
-                if (sw & M_SWMIXED) {
-    memset(line_buffer, 9, SCREEN_WIDTH); // orange
-                    // Mixed mode: render bottom 4 text lines (lines 160-191)
-                    // This overlays text on top of the HGR screen
-            //        mii_video_render_text40_mixed_rp2350(mii, hdmi_buffer, 320);
-                }
-            } else {
-    memset(line_buffer, 13, SCREEN_WIDTH); // yellow
-                // Lo-res graphics mode
-            //    mii_video_render_lores_rp2350(mii, hdmi_buffer, 320);
-            }
-            input_buffer = line_buffer;
-        }
-       
+        register uint8_t* input_buffer = graphics_get_buffer() + y * SCREEN_WIDTH;
         register uint8_t* output_buffer = activ_buf + 72; //для выравнивания синхры;
         // Copy from framebuffer, substituting HDMI reserved colors
+        lock_y = y;
         for (register int i = 0; i < SCREEN_WIDTH; i++) {
             register uint8_t c = input_buffer[i];
             if (c >= 240 && c <= 243) c = color_substitute[c - 240];
             output_buffer[i] = c;
         }
+        lock_y = -1;
         
         //ССИ
         //для выравнивания синхры
@@ -983,12 +739,14 @@ void graphics_restore_sync_colors(void) {
     conv_color64[2 * (base_inx + 3) + 1] = get_ser_diff_data(b0, b0, b0);
 }
 
+uint8_t* graphics_get_buffer() {
+    static uint8_t graphics_buffer[SCREEN_WIDTH * SCREEN_HEIGHT] = { 0 };
+    return graphics_buffer;
+}
+
 // Wrappers for existing API
 void graphics_init(g_out g_out) {
     graphics_init_hdmi();
-    for(int8_t i = 0; i < 16; ++i) {
-        dhires_c[i] = rp2350_ci_to_hw[(uint8_t)mii_base_clut.dhires[i]];
-    }
 }
 
 void graphics_set_palette(uint8_t i, uint32_t color888) {
@@ -1049,57 +807,4 @@ void graphics_rebind_irq_to_current_core(void) {
 
 void set_palette(uint8_t n) {
     // Stub
-}
-
-void mii_video_prep_hdmi_frame() {
-    mii_t* mii = &g_mii;
-    mii_video_t *video = &mii->video;
-	
-	uint32_t sw = mii->sw_state;
-	bool text_mode = !!(sw & M_SWTEXT);
-	bool mixed = !!(sw & M_SWMIXED);
-	bool hires = !!(sw & M_SWHIRES);
-	bool page2 = SWW_GETSTATE(sw, SW80STORE) ? 0 : SWW_GETSTATE(sw, SWPAGE2);
-	bool col80 = !!(sw & M_SW80COL);
-	bool dhires = !!(sw & M_SWDHIRES);
-	bool an3_mode = video->an3_mode == 1 || video->an3_mode == 2;
-
-    main_mem = mii->bank[MII_BANK_MAIN].mem;
-    aux_mem  = mii->bank[MII_BANK_AUX_BASE].mem;
-
-	if (text_mode) {
-		// Pure text mode
-        base_addr = 0x400 + (0x400 * page2);
-        flash = (video->frame_count & 0x10) ? -0x40 : 0x40;
-	} else if (hires) {
-		// Hi-res graphics mode
-		// DHGR requires: HIRES=1, TEXT=0, DHIRES=1, and either 80COL=1 or an3_mode indicates DHGR
-		// an3_mode: 0=40col text/lores, 1=DHGR color, 2=DHGR mono, 3=80col text
-		is_dhgr = dhires && (col80 || an3_mode);
-		if (is_dhgr) {
-//			mii_video_render_dhires_rp2350(mii, hdmi_buffer, 320);
-		} else {
-        	// Apple II DHGR is 560x192. We render into 320x240 with 24px top margin.
-	        // Use nearest-neighbor horizontal resample: src_x = (x * 7) / 4.
-	        color = (mii->video.an3_mode != 0) && !mii->video.monochrome;
-        	base_addr = 0x2000 + (0x2000 * page2);
-//			mii_video_render_hires_rp2350(mii, hdmi_buffer, 320);
-		}
-		if (mixed) {
-			// Mixed mode: render bottom 4 text lines (lines 160-191)
-			// This overlays text on top of the HGR screen
-//			mii_video_render_text40_mixed_rp2350(mii, hdmi_buffer, 320);
-		}
-	} else {
-		// Lo-res graphics mode
-	//	mii_video_render_lores_rp2350(mii, hdmi_buffer, 320);
-	}
-	
-	// Draw floppy activity indicator in bottom border
-    /*
-	int motor_state = mii_disk2_get_motor_state();
-	if (motor_state > 0) {
-		mii_video_draw_floppy_indicator(hdmi_buffer, motor_state, mii->video.frame_count);
-	}
-    */
 }

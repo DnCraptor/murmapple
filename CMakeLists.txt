@@ -17,7 +17,7 @@ cmake_minimum_required(VERSION 3.13)
 set(BUILD_NAME "murmapple")
 
 # Set board to Pico 2 (RP2350)
-set(PICO_BOARD pico CACHE STRING "Board type")
+set(PICO_BOARD pico2 CACHE STRING "Board type")
 
 # Board configuration variant (M1, M2)
 set(BOARD_VARIANT "M1" CACHE STRING "Board variant: M1 or M2")
@@ -167,10 +167,11 @@ if (PICO_BOARD STREQUAL "pico")
     target_compile_definitions(slower_boot2 PRIVATE PICO_FLASH_SPI_CLKDIV=4)
     pico_set_boot_stage2(${BUILD_NAME} slower_boot2)
     unset(MOS2)
-else() # RP2350 ASM-file:
-    add_executable(${BUILD_NAME}
-        src/mii_disk2_lss_asm.S
-    )
+else()
+# RP2350 ASM-file: (required?)
+#    add_executable(${BUILD_NAME}
+#        src/mii_disk2_lss_asm.S
+#    )
     # MOS2 support:
     if (MOS2)
         pico_set_linker_script(${PROJECT_NAME} "${CMAKE_SOURCE_DIR}/memmap.mos2.ld")

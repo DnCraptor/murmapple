@@ -301,9 +301,9 @@ static void core1_main(void) {
         
         // Always render into the back buffer, then request a swap on vsync.
         if (ui_visible) {
-            disk_ui_render(mii_ram, HDMI_WIDTH, HDMI_HEIGHT);
+            disk_ui_render(graphics_get_buffer(), HDMI_WIDTH, HDMI_HEIGHT);
         } else {
-            mii_video_prep_hdmi_frame();
+            mii_video_scale_to_hdmi(&g_mii.video, graphics_get_buffer());
         }
 
         // Wait until the swap has actually happened (vsync tick), then rotate buffers.
@@ -370,7 +370,6 @@ static void load_char_rom(mii_t *mii, const uint8_t *rom, size_t len) {
         MII_DEBUG_PRINTF("Loaded %zu bytes character ROM (fallback)\n", len);
     }
 }
-
 
 int main() {
     // Overclock support: For speeds > 252 MHz, increase voltage first
@@ -598,7 +597,7 @@ int main() {
 #endif
         .board_variant = board_num,
     };
-//    mii_startscreen_show(&screen_info);
+    mii_startscreen_show(&screen_info);
     
     // Let ROM boot naturally
     MII_DEBUG_PRINTF("Running ROM boot sequence (1M cycles)...\n");

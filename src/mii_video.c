@@ -18,7 +18,6 @@
 #include "minipt.h"
 #include "debug_log.h"
 
-
 #if defined(__AVX2__)
 #include <immintrin.h>
 typedef uint32_t u32_v __attribute__((vector_size(32)));
@@ -1454,6 +1453,10 @@ const uint8_t rp2350_ci_to_hw[16] = {
 	[CI_AQUA] = 14,
 };
 
+#include <pico.h>
+extern volatile int lock_y;
+static uint8_t line_buffer[320] __aligned(4) __scratch_x("line_buffer");
+
 // Render text mode (40 column) to framebuffer - OPTIMIZED
 static void __attribute__((hot))
 mii_video_render_text40_rp2350(
@@ -1665,7 +1668,7 @@ mii_video_render_hires_rp2350(
 		int fb_y = 24 + line;  // 24 pixel vertical offset to center
 		if (fb_y >= 240) continue;
 		
-		uint8_t *fb_row = fb + fb_y * fb_width;
+		uint8_t *fb_row = line_buffer;
 		// Clear the whole row to black so borders don't retain stale pixels.
 		memset(fb_row, HW_BLACK, (size_t)fb_width);
 
@@ -1709,6 +1712,8 @@ mii_video_render_hires_rp2350(
 			b0 = b1;
 			b1 = b2;
 		}
+		while (fb_y == lock_y) ; // unsure unlocked
+		memcpy(fb + fb_y * fb_width, line_buffer, fb_width);
 	}
 }
 
@@ -1737,8 +1742,8 @@ mii_video_render_dhires_rp2350(
 		int fb_y = 24 + line;
 		if (fb_y >= 240)
 			continue;
-		uint8_t *fb_row = fb + fb_y * fb_width;
 
+		uint8_t *fb_row = line_buffer;
 		if (!color) {
 			// Mono: combine MAIN/AUX 7-bit streams into 14-bit pixels (560 wide)
 			// Cache column data to avoid repeated memory lookups
@@ -1756,34 +1761,36 @@ mii_video_render_dhires_rp2350(
 				uint8_t pixel = (ext >> bi) & 1;
 				fb_row[x] = pixel ? 15 : 0;
 			}
-			continue;
 		}
+		else {
+			// Color: build a bit buffer for 80 bytes (AUX/MAIN interleaved)
+			uint8_t bits[71] = {0};
+			for (int x = 0; x < 80; x++) {
+				uint8_t b = (x & 1) ? main_mem[line_addr + (x / 2)]
+								: aux_mem[line_addr + (x / 2)];
+				for (int i = 0; i < 7; i++) {
+					int out_index = 2 + (x * 7) + i;
+					int out_byte = out_index / 8;
+					int out_bit = 7 - (out_index % 8);
+					int bit = (b >> i) & 1;
+					bits[out_byte] |= bit << out_bit;
+				}
+			}
 
-		// Color: build a bit buffer for 80 bytes (AUX/MAIN interleaved)
-		uint8_t bits[71] = {0};
-		for (int x = 0; x < 80; x++) {
-			uint8_t b = (x & 1) ? main_mem[line_addr + (x / 2)]
-			                   : aux_mem[line_addr + (x / 2)];
-			for (int i = 0; i < 7; i++) {
-				int out_index = 2 + (x * 7) + i;
-				int out_byte = out_index / 8;
-				int out_bit = 7 - (out_index % 8);
-				int bit = (b >> i) & 1;
-				bits[out_byte] |= bit << out_bit;
+			for (int x = 0; x < 320; x++) {
+				int i = (x * 7) / 4; // 0..559
+				int d = 2 + i;
+				uint8_t pixel =
+					(_mii_get_1bits_rp2350(bits, i + 3) << (3 - ((d + 3) % 4))) +
+					(_mii_get_1bits_rp2350(bits, i + 2) << (3 - ((d + 2) % 4))) +
+					(_mii_get_1bits_rp2350(bits, i + 1) << (3 - ((d + 1) % 4))) +
+					(_mii_get_1bits_rp2350(bits, i)     << (3 - (d % 4)));
+				uint8_t ci = (uint8_t)mii_base_clut.dhires[pixel];
+				fb_row[x] = rp2350_ci_to_hw[ci & 0x0f];
 			}
 		}
-
-		for (int x = 0; x < 320; x++) {
-			int i = (x * 7) / 4; // 0..559
-			int d = 2 + i;
-			uint8_t pixel =
-				(_mii_get_1bits_rp2350(bits, i + 3) << (3 - ((d + 3) % 4))) +
-				(_mii_get_1bits_rp2350(bits, i + 2) << (3 - ((d + 2) % 4))) +
-				(_mii_get_1bits_rp2350(bits, i + 1) << (3 - ((d + 1) % 4))) +
-				(_mii_get_1bits_rp2350(bits, i)     << (3 - (d % 4)));
-			uint8_t ci = (uint8_t)mii_base_clut.dhires[pixel];
-			fb_row[x] = rp2350_ci_to_hw[ci & 0x0f];
-		}
+		while (fb_y == lock_y) ; // unsure unlocked
+		memcpy(fb + fb_y * fb_width, line_buffer, fb_width);
 	}
 }
 
