@@ -278,8 +278,6 @@ void clear_held_key(void) {
 // Flag to indicate emulator is ready
 static volatile bool g_emulator_ready = false;
 
-extern uint8_t mii_ram[0x20000];
-
 // Core 1 - Video rendering loop
 static void core1_main(void) {
     MII_DEBUG_PRINTF("Core 1: Waiting for emulator ready...\n");

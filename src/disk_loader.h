@@ -48,7 +48,7 @@ typedef struct {
 } loaded_disk_t;
 
 // Global state
-extern disk_entry_t* g_disk_list; // MAX_DISK_IMAGES;
+extern disk_entry_t g_disk_list[MAX_DISK_IMAGES];
 extern int g_disk_count;
 extern loaded_disk_t g_loaded_disks[2];  // Drive 1 and Drive 2
 

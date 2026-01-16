@@ -18,6 +18,7 @@
 #include "mii_65c02.h"
 #include "minipt.h"
 #include "debug_log.h"
+#include "ff.h"
 
 #if MII_65C02_DIRECT_ACCESS
 static mii_cpu_state_t
@@ -30,25 +31,49 @@ mii_slot_drv_t * mii_slot_drv_list = NULL;
 
 extern const uint8_t mii_rom_iiee[16384];
 
+// Static memory arrays for RP2350 (no malloc/realloc)
+static uint8_t rp2350_sw_mem[256] __aligned(256);        // Soft switch area
+static uint8_t rp2350_card_rom[0x0F00] __aligned(256);   // Card ROM area ($C100-$CFFF = 15 pages)
+
+static uint8_t main_vram[0x10000] __aligned(4096);
+static uint8_t aux_vram[0x10000] __aligned(4096);
+static vram_t main_vram_d = {
+	.filename = "/tmp/mii_main.swap",
+};
+static vram_t aux_vram_d = { 
+	.filename = "/tmp/mii_aux.swap",
+};
+
 static const mii_bank_t	_mii_banks_init[MII_BANK_COUNT] = {
 	[MII_BANK_MAIN] = {
 		.name = "MAIN",
 		.base = 0x0000,
 		.size = 0xc0,
+		.logical_mem_offset = 0x0000,
+		.raw = main_vram,
+		.no_alloc = 1,
+		.vram = 1,
+		.vram_desc = &main_vram_d,
 	},
 	[MII_BANK_BSR] = {
 		.name = "BSR",
 		.base = 0xd000,
 		.size = 64,
-		.mem_offset = 0xd000,
+		.logical_mem_offset = 0xd000,
+		.raw = main_vram,
 		.no_alloc = 1,
+		.vram = 1,
+		.vram_desc = &main_vram_d,
 	},
 	[MII_BANK_BSR_P2] = {
 		.name = "BSR P2",
 		.base = 0xd000,
 		.size = 16,
-		.mem_offset = 0xc000,
+		.logical_mem_offset = 0xc000,
+		.raw = main_vram,
 		.no_alloc = 1,
+		.vram = 1,
+		.vram_desc = &main_vram_d,
 	},
 	/*
 	 * Aux memory is multiple times 64KB (with the ramworks card). *This* bank
@@ -62,33 +87,48 @@ static const mii_bank_t	_mii_banks_init[MII_BANK_COUNT] = {
 		.name = "AUX_BASE",
 		.base = 0x0000,
 		.size = 0xd0, // 208 pages, 48KB
+		.logical_mem_offset = 0x0000,
+		.raw = aux_vram,
 		.no_alloc = 1,
+		.vram = 1,
+		.vram_desc = &aux_vram_d,
 	},
 	/* This one is the one that is remapped with ramworks is in use */
 	[MII_BANK_AUX] = {
 		.name = "AUX",
 		.base = 0x0000,
 		.size = 0xd0, // 208 pages, 48KB
+		.logical_mem_offset = 0x0000,
+		.raw = aux_vram,
 		.no_alloc = 1,
+		.vram = 1,
+		.vram_desc = &aux_vram_d,
 	},
 	[MII_BANK_AUX_BSR] = {
 		.name = "AUX BSR",
 		.base = 0xd000,
 		.size = 64,
-		.mem_offset = 0xd000,
+		.logical_mem_offset = 0xd000,
+		.raw = aux_vram,
 		.no_alloc = 1,
+		.vram = 1,
+		.vram_desc = &aux_vram_d,
 	},
 	[MII_BANK_AUX_BSR_P2] = {
 		.name = "AUX BSR P2",
 		.base = 0xd000,
 		.size = 16,
-		.mem_offset = 0xc000,
+		.logical_mem_offset = 0xc000,
+		.raw = aux_vram,
 		.no_alloc = 1,
+		.vram = 1,
+		.vram_desc = &aux_vram_d,
 	},
 	[MII_BANK_ROM] = {
 		.name = "ROM",
 		.base = 0xc000,
 		.size = 0x40, // 64 pages, 16KB
+		.raw = mii_rom_iiee,
 		.ro = 1,
 		.no_alloc = 1,
 	},
@@ -99,12 +139,16 @@ static const mii_bank_t	_mii_banks_init[MII_BANK_COUNT] = {
 		// 7 * 2KB for extended ROMs for cards (not addressable directly)
 		// Car roms are 'banked' as well, so we don't need to copy them around
 		.size = 15,// + (7 * 8),
+		.raw = rp2350_card_rom,
+		.no_alloc = 1,
 		.ro = 1,
 	},
 	[MII_BANK_SW] = {
 		.name = "SW",
 		.base = 0xc000,
 		.size = 0x1,
+		.raw = rp2350_sw_mem,
+		.no_alloc = 1
 	},
 };
 
@@ -468,13 +512,13 @@ mii_access_soft_switches(
 		switch (addr) {
 			case 0xc020 ... 0xc02f:
 				res = true;
-				if (mii->bank[MII_BANK_ROM].mem == mii->rom->rom) {
+				if (mii->bank[MII_BANK_ROM].raw == mii->rom->rom) {
 					MII_DEBUG_PRINTF("BANKING IIC SECOND ROM\n");
-					mii->bank[MII_BANK_ROM].mem = (uint8_t*)
+					mii->bank[MII_BANK_ROM].raw = (uint8_t*)
 						mii->rom->rom + (16 * 1024);
 				} else {
 					MII_DEBUG_PRINTF("BANKING IIC FIRST ROM\n");
-					mii->bank[MII_BANK_ROM].mem = (uint8_t*)mii->rom->rom;
+					mii->bank[MII_BANK_ROM].raw = (uint8_t*)mii->rom->rom;
 				}
 				return res;
 				break;
@@ -682,12 +726,6 @@ static const unsigned __int128 _mii_ramworks3_config[] = {
 #endif
 
 #if MII_RP2350
-// Static memory arrays for RP2350 (no malloc/realloc)
-uint8_t mii_ram[0x20000] __aligned(4096);  // 64+64KB memory
-static uint8_t* rp2350_main_mem = mii_ram;  // 64KB main memory
-static uint8_t* rp2350_aux_mem = mii_ram + 0x10000;   // 64KB aux memory (full Apple IIe aux)
-static uint8_t rp2350_sw_mem[256];        // Soft switch area
-static uint8_t rp2350_card_rom[0x0F00];   // Card ROM area ($C100-$CFFF = 15 pages)
 
 void
 mii_init(
@@ -702,38 +740,19 @@ mii_init(
 	for (int i = 0; i < MII_BANK_COUNT; i++)
 		mii->bank[i] = _mii_banks_init[i];
 
-	// On RP2350, use static memory arrays instead of malloc
-	mii->bank[MII_BANK_MAIN].mem = rp2350_main_mem;
-	mii->bank[MII_BANK_MAIN].no_alloc = 1;
-	mii->bank[MII_BANK_BSR].mem = rp2350_main_mem;
-	mii->bank[MII_BANK_BSR].no_alloc = 1;
-	mii->bank[MII_BANK_BSR_P2].mem = rp2350_main_mem;
-	mii->bank[MII_BANK_BSR_P2].no_alloc = 1;
-	
-	mii->bank[MII_BANK_AUX].mem = rp2350_aux_mem;
-	mii->bank[MII_BANK_AUX].no_alloc = 1;
-	mii->bank[MII_BANK_AUX_BASE].mem = rp2350_aux_mem;
-	mii->bank[MII_BANK_AUX_BASE].no_alloc = 1;
-	mii->bank[MII_BANK_AUX_BSR].mem = rp2350_aux_mem;
-	mii->bank[MII_BANK_AUX_BSR].no_alloc = 1;
-	mii->bank[MII_BANK_AUX_BSR_P2].mem = rp2350_aux_mem;
-	mii->bank[MII_BANK_AUX_BSR_P2].no_alloc = 1;
-	
-	mii->bank[MII_BANK_SW].mem = rp2350_sw_mem;
-	mii->bank[MII_BANK_SW].no_alloc = 1;
-	
-	// Card ROM bank for slot ROMs ($C100-$CFFF)
-	mii->bank[MII_BANK_CARD_ROM].mem = rp2350_card_rom;
-	mii->bank[MII_BANK_CARD_ROM].no_alloc = 1;
-
 	// Initialize banks (won't allocate since no_alloc is set)
 	MII_DEBUG_PRINTF("  mii_init: initializing bank memory...\n");
 	// For RP2350, only clear MAIN bank once - other banks share memory
 	// We allocated exactly the right sizes, so just clear each unique buffer once
 	MII_DEBUG_PRINTF("    Clearing main memory (64KB)\n");
-	memset(rp2350_main_mem, 0, sizeof(rp2350_main_mem));
+	memset(main_vram, 0, sizeof(main_vram));
+	/// TODO: init vram (pin 0, 1)
+	memset(main_vram_d.desc, 0, sizeof(main_vram_d.desc));
+	f_unlink(main_vram_d.filename);
 	MII_DEBUG_PRINTF("    Clearing aux memory (52KB)\n");
-	memset(rp2350_aux_mem, 0, sizeof(rp2350_aux_mem));
+	memset(aux_vram, 0, sizeof(aux_vram));
+	memset(aux_vram_d.desc, 0, sizeof(aux_vram_d.desc));
+	f_unlink(aux_vram_d.filename);
 	MII_DEBUG_PRINTF("    Clearing soft switch area\n");
 	memset(rp2350_sw_mem, 0, sizeof(rp2350_sw_mem));
 	MII_DEBUG_PRINTF("    Clearing card ROM area\n");
@@ -873,7 +892,7 @@ mii_reset(
 		MII_DEBUG_PRINTF("IIC Mode engaged\n");
 		mii->rom = mii_rom_get("iic");
 	}
-	mii->bank[MII_BANK_ROM].mem = (uint8_t*)mii->rom->rom;
+	mii->bank[MII_BANK_ROM].raw = (uint8_t*)mii->rom->rom;
 	mii->state = MII_RUNNING;
 	mii->cpu_state.reset = 1;
 	mii_bank_t * main = &mii->bank[MII_BANK_MAIN];
@@ -1230,17 +1249,13 @@ _mii_cpu_direct_access_cb(
 			uint8_t m = mii->mem[page].write;
 			mii_bank_t *b = &mii->bank[m];
 			if (likely(!b->ro)) {
-				// Direct memory write - bypass mii_bank_write overhead
-				uint32_t phy = b->mem_offset + addr - b->base;
-				b->mem[phy] = access.data;
+				mii_bank_poke(b, addr, access.data);
 			}
 		} else {
 			// Read
 			uint8_t m = mii->mem[page].read;
 			mii_bank_t *b = &mii->bank[m];
-			// Direct memory read - bypass mii_bank_peek overhead
-			uint32_t phy = b->mem_offset + addr - b->base;
-			mii->cpu_state.data = b->mem[phy];
+			mii->cpu_state.data = mii_bank_peek(b, addr);
 		}
 	} else {
 		// Slow path for I/O only ($C000-$C0FF)

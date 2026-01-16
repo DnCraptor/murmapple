@@ -20,10 +20,10 @@ void
 mii_bank_init(
 		mii_bank_t *bank)
 {
-	if (bank->mem)
+	if (bank->raw)
 		return;
-	if (bank->mem_offset == 0 && !bank->no_alloc) {
-		bank->mem = calloc(1, bank->size * 256);
+	if (bank->logical_mem_offset == 0 && !bank->no_alloc) {
+		bank->raw = calloc(1, bank->size * 256);
 		bank->alloc = 1;
 	}
 }
@@ -34,9 +34,10 @@ mii_bank_dispose(
 {
 //	printf("%s %s\n", __func__, bank->name);
 	if (bank->alloc)
-		free(bank->mem);
-	bank->mem = NULL;
+		free(bank->raw);
+	bank->raw = NULL;
 	bank->alloc = 0;
+#if WITH_BANK_ACCESS
 	if (bank->access) {
 		// Allow callback to free anything it wants
 		for (int i = 0; i < bank->size; i++)
@@ -45,6 +46,7 @@ mii_bank_dispose(
 		free(bank->access);
 	}
 	bank->access = NULL;
+#endif
 }
 
 bool
@@ -55,14 +57,20 @@ mii_bank_access(
 		uint16_t len,
 		bool write)
 {
+#if WITH_BANK_ACCESS
 	uint8_t page_index = (addr - bank->base) >> 8;
 	if (bank->access && bank->access[page_index].cb) {
 		if (bank->access[page_index].cb(bank, bank->access[page_index].param,
 					addr, (uint8_t *)data, write))
 			return true;
 	}
+#endif
 	return false;
 }
+
+#ifndef MIN
+#define MIN(a,b) ((a) < (b) ? (a) : (b))
+#endif
 
 void
 mii_bank_write(
@@ -71,22 +79,27 @@ mii_bank_write(
 		const uint8_t *data,
 		uint16_t len)
 {
-	#if 0 // rather expensive test when profiling!
-	uint32_t end = bank->base + (bank->size << 8);
-	if (unlikely(addr < bank->base || (addr + len) > end)) {
-		printf("%s %s INVALID write addr %04x len %d %04x:%04x\n",
-					__func__, bank->name, addr, (int)len,
-					bank->base, end);
-					abort();
+    if (mii_bank_access(bank, addr, data, len, true))
+        return;
+	if (!bank->vram) {
+		uint32_t phy = bank->logical_mem_offset + addr - bank->base;
+		do {
+			bank->raw[phy++] = *data++;
+		} while (likely(--len));
 		return;
 	}
-	#endif
-	if (mii_bank_access(bank, addr, data, len, true))
-		return;
-	uint32_t phy = bank->mem_offset + addr - bank->base;
-	do {
-		bank->mem[phy++] = *data++;
-	} while (likely(--len));
+	while (len) {
+		uint32_t phy = bank->logical_mem_offset + addr - bank->base;
+		uint32_t off  = phy & RAM_IN_PAGE_ADDR_MASK;
+		uint32_t n    = MIN(len, RAM_PAGE_SIZE - off);
+		uint32_t phys_page = get_ram_page_for(bank, phy);
+		bank->vram_desc->desc[phys_page].dirty = 1;
+		uint8_t *dst = bank->raw + (phys_page << 8) + off;
+		memcpy(dst, data, n);
+		addr += n;
+		data += n;
+		len  -= n;
+	}
 }
 
 void
@@ -96,24 +109,29 @@ mii_bank_read(
 		uint8_t *data,
 		uint16_t len)
 {
-	#if 0 // rather expensive test when profiling!
-	uint32_t end = bank->base + (bank->size << 8);
-	if (unlikely(addr < bank->base) || unlikely((addr + len) > end)) {
-		printf("%s %s INVALID read addr %04x len %d %04x-%04x\n",
-					__func__, bank->name, addr, (int)len,
-					bank->base, end);
-		return;
-	}
-	#endif
 	if (mii_bank_access(bank, addr, data, len, false))
 		return;
-	uint32_t phy = bank->mem_offset + addr - bank->base;
-	do {
-		*data++ = bank->mem[phy++];
-	} while (likely(--len));
+	if (!bank->vram) {
+		uint32_t phy = bank->logical_mem_offset + addr - bank->base;
+		do {
+			*data++ = bank->raw[phy++];
+		} while (likely(--len));
+		return;
+	}
+	while (len) {
+		uint32_t phy = bank->logical_mem_offset + addr - bank->base;
+		uint32_t off  = phy & RAM_IN_PAGE_ADDR_MASK;
+		uint32_t n    = MIN(len, RAM_PAGE_SIZE - off);
+		uint32_t phys_page = get_ram_page_for(bank, phy);
+		uint8_t *dst = bank->raw + (phys_page << 8) + off;
+		memcpy(data, dst, n);
+		addr += n;
+		data += n;
+		len  -= n;
+	}
 }
 
-
+#if WITH_BANK_ACCESS
 void
 mii_bank_install_access_cb(
 		mii_bank_t *bank,
@@ -144,3 +162,4 @@ mii_bank_install_access_cb(
 		bank->access[i].param = param;
 	}
 }
+#endif

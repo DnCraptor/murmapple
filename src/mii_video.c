@@ -1480,10 +1480,14 @@ mii_video_render_text40_rp2350(
 	const uint8_t *rom_base = char_rom;
 	if (video->rom && video->rom->len > (4 * 1024) && video->rom_bank)
 		rom_base += (4 * 1024);
-	
-	// Direct memory pointers for speed
-	uint8_t *main_mem = main_bank->mem;
-	uint8_t *aux_mem = aux_bank->mem;
+
+    pin_ram_pages_for(main_bank, base_addr, 0x400);
+    if (col80)
+        pin_ram_pages_for(aux_bank, base_addr, 0x400);
+	else
+        pin_ram_pages_for(aux_bank, base_addr, 0); // unpin unused
+		
+	uint8_t main_row[40];
 	int flash = (video->frame_count & 0x10) ? -0x40 : 0x40;
 	
 	// Text screen is 40x24 (or 80x24 if SW80COL is on)
@@ -1493,10 +1497,11 @@ mii_video_render_text40_rp2350(
 		// Apple II text memory is interleaved
 		uint16_t line_addr = base_addr + (row & 7) * 0x80 + (row / 8) * 0x28;
 
+		mii_bank_read(main_bank, line_addr, main_row, 40);
 		if (!col80) {
 			// 40-column mode - most common case, highly optimized
 			for (int x = 0; x < 40; x++) {
-				uint8_t c = main_mem[line_addr + x];
+				uint8_t c = main_row[x];
 
 				// Flash handling
 				if (!altset && c >= 0x40 && c <= 0x7F)
@@ -1522,12 +1527,14 @@ mii_video_render_text40_rp2350(
 			}
 		} else {
 			// 80-column mode
+			uint8_t aux_row[40];
+			mii_bank_read(aux_bank, line_addr, aux_row, 40);
 			for (int x = 0; x < 80; x++) {
 				uint8_t c;
 				if (x & 1)
-					c = main_mem[line_addr + (x >> 1)];
+					c = main_row[x >> 1];
 				else
-					c = aux_mem[line_addr + (x >> 1)];
+					c = aux_row[x >> 1];
 
 				if (!altset && c >= 0x40 && c <= 0x7F)
 					c = (int)c + flash;
@@ -1574,19 +1581,25 @@ mii_video_render_text40_mixed_rp2350(
 	if (video->rom && video->rom->len > (4 * 1024) && video->rom_bank)
 		rom_base += (4 * 1024);
 	
-	// Direct memory pointers for speed
-	uint8_t *main_mem = main_bank->mem;
-	uint8_t *aux_mem = aux_bank->mem;
+    pin_ram_pages_for(main_bank, base_addr, 0x400);
+    if (col80)
+        pin_ram_pages_for(aux_bank, base_addr, 0x400);
+    else
+        pin_ram_pages_for(aux_bank, base_addr, 0); // unpin AUX if unused
+		
+    uint8_t main_row[40];
+    uint8_t aux_row[40];
+
 	int flash = (video->frame_count & 0x10) ? -0x40 : 0x40;
 	
 	// In mixed mode, only render the bottom 4 text rows (rows 20-23)
 	// These correspond to Apple II lines 160-191
 	for (int row = 20; row < 24; row++) {
 		uint16_t line_addr = base_addr + (row & 7) * 0x80 + (row / 8) * 0x28;
-
+		mii_bank_read(main_bank, line_addr, main_row, 40);
 		if (!col80) {
 			for (int x = 0; x < 40; x++) {
-				uint8_t c = main_mem[line_addr + x];
+				uint8_t c = main_row[x];
 
 				if (!altset && c >= 0x40 && c <= 0x7F)
 					c = (int)c + flash;
@@ -1609,9 +1622,9 @@ mii_video_render_text40_mixed_rp2350(
 				}
 			}
 		} else {
+			mii_bank_read(aux_bank, line_addr, aux_row, 40);
 			for (int x = 0; x < 80; x++) {
-				uint8_t c = (x & 1) ? main_mem[line_addr + (x >> 1)]
-				                   : aux_mem[line_addr + (x >> 1)];
+				uint8_t c = (x & 1) ? main_row[x >> 1] : aux_row[x >> 1];
 
 				if (!altset && c >= 0x40 && c <= 0x7F)
 					c = (int)c + flash;
@@ -1642,7 +1655,7 @@ mii_video_render_hires_rp2350(
 		int fb_width)
 {
 	mii_bank_t *main_bank = &mii->bank[MII_BANK_MAIN];
-	uint8_t *mem = main_bank->mem;  // Direct memory access
+	mii_bank_t *aux_bank = &mii->bank[MII_VIDEO_BANK];
 	mii_video_t *video = &mii->video;
 	const uint8_t HW_BLACK = 0;
 	const uint8_t HW_WHITE = 15;
@@ -1656,6 +1669,10 @@ mii_video_render_hires_rp2350(
 	// Use the same artifact-color decoding as the desktop renderer (_mii_line_render_hires).
 	const int x_off = (320 - 280) / 2; // 20
 	const bool mono = video->monochrome;
+
+	pin_ram_pages_for(main_bank, base_addr, 0x2000);
+    pin_ram_pages_for(aux_bank,  base_addr, 0);
+	uint8_t line_buf[40];   // one HGR line = 40 bytes
 	
 	for (int line = 0; line < 192; line++) {
 		// Apple II HGR line address calculation (same as original)
@@ -1668,14 +1685,15 @@ mii_video_render_hires_rp2350(
 		int fb_y = 24 + line;  // 24 pixel vertical offset to center
 		if (fb_y >= 240) continue;
 		
+		mii_bank_read(main_bank, line_addr, line_buf, 40);		
 		uint8_t *fb_row = line_buffer;
 		// Clear the whole row to black so borders don't retain stale pixels.
 		memset(fb_row, HW_BLACK, (size_t)fb_width);
 
 		uint8_t b0 = 0;
-		uint8_t b1 = mem[line_addr + 0];
+		uint8_t b1 = line_buf[0];
 		for (int col = 0; col < 40; col++) {
-			uint8_t b2 = (col == 39) ? 0 : mem[line_addr + col + 1];
+			uint8_t b2 = (col == 39) ? 0 : line_buf[col + 1];
 			// last 2 pixels, current 7 pixels, next 2 pixels
 			uint16_t run = ((b0 & 0x60) >> 5) |
 						((b1 & 0x7f) << 2) |
@@ -1729,9 +1747,11 @@ mii_video_render_dhires_rp2350(
 	const bool page2 = SWW_GETSTATE(sw, SW80STORE) ? 0 : SWW_GETSTATE(sw, SWPAGE2);
 	uint16_t base_addr = 0x2000 + (0x2000 * page2);
 
-	// Direct memory access for speed
-	uint8_t *main_mem = main_bank->mem;
-	uint8_t *aux_mem = aux_bank->mem;
+    pin_ram_pages_for(main_bank, base_addr, 0x2000);
+    pin_ram_pages_for(aux_bank,  base_addr, 0x2000);
+
+    uint8_t main_row[40];
+    uint8_t aux_row[40];
 
 	// Apple II DHGR is 560x192. We render into 320x240 with 24px top margin.
 	// Use nearest-neighbor horizontal resample: src_x = (x * 7) / 4.
@@ -1743,6 +1763,9 @@ mii_video_render_dhires_rp2350(
 		if (fb_y >= 240)
 			continue;
 
+        mii_bank_read(main_bank, line_addr, main_row, 40);
+        mii_bank_read(aux_bank,  line_addr, aux_row,  40);
+
 		uint8_t *fb_row = line_buffer;
 		if (!color) {
 			// Mono: combine MAIN/AUX 7-bit streams into 14-bit pixels (560 wide)
@@ -1753,8 +1776,7 @@ mii_video_render_dhires_rp2350(
 				int src = (x * 7) / 4; // 0..559
 				int col = src / 14;    // 0..39
 				if (col != last_col) {
-					ext = (aux_mem[line_addr + col] & 0x7f) |
-					      ((main_mem[line_addr + col] & 0x7f) << 7);
+					ext = (aux_row[col] & 0x7f) | ((main_row[col] & 0x7f) << 7);
 					last_col = col;
 				}
 				int bi = src % 14;
@@ -1766,8 +1788,7 @@ mii_video_render_dhires_rp2350(
 			// Color: build a bit buffer for 80 bytes (AUX/MAIN interleaved)
 			uint8_t bits[71] = {0};
 			for (int x = 0; x < 80; x++) {
-				uint8_t b = (x & 1) ? main_mem[line_addr + (x / 2)]
-								: aux_mem[line_addr + (x / 2)];
+				uint8_t b = (x & 1) ? main_row[x / 2] : aux_row[x / 2];
 				for (int i = 0; i < 7; i++) {
 					int out_index = 2 + (x * 7) + i;
 					int out_byte = out_index / 8;
@@ -1802,6 +1823,7 @@ mii_video_render_lores_rp2350(
 		int fb_width)
 {
 	mii_bank_t *main_bank = &mii->bank[MII_BANK_MAIN];
+	mii_bank_t *aux_bank = &mii->bank[MII_VIDEO_BANK];
 	
 	// Lo-res is 40x48 blocks
 	// Screen memory is 40x24 bytes, each byte has:
@@ -1815,9 +1837,11 @@ mii_video_render_lores_rp2350(
 	bool page2 = !!(mii->sw_state & M_SWPAGE2);
 	uint16_t base_addr = page2 ? 0x800 : 0x400;
 	
-	// Direct memory access for speed
-	uint8_t *mem = main_bank->mem;
+    pin_ram_pages_for(main_bank, base_addr, 0x400);
+    pin_ram_pages_for(aux_bank,  base_addr, 0);
 	
+    uint8_t main_row[40];
+
 	for (int lores_row = 0; lores_row < 48; lores_row++) {
 		// Convert LORES row (0-47) to memory row (0-23) 
 		int mem_row = lores_row / 2;
@@ -1826,11 +1850,12 @@ mii_video_render_lores_rp2350(
 		// Apple II screen memory address calculation
 		uint16_t line_addr = base_addr + (mem_row & 7) * 0x80 + (mem_row / 8) * 0x28;
 		
+        mii_bank_read(main_bank, line_addr, main_row, 40);
 		// Each LORES row maps to 5 framebuffer rows (48 * 5 = 240)
 		int fb_y_start = lores_row * 5;
 		
 		for (int col = 0; col < 40; col++) {
-			uint8_t byte = mem[line_addr + col];  // Direct memory access
+			uint8_t byte = main_row[col];  // Direct memory access
 			uint8_t color = is_bottom_half ? ((byte >> 4) & 0x0F) : (byte & 0x0F);
 			
 			// Each LORES column maps to 8 framebuffer columns (40 * 8 = 320)

@@ -24,14 +24,7 @@
 #include "debug_log.h"
 
 // Global state
-extern uint8_t mii_ram[0x20000];
-/// mii_ram[0x20000] - (320*240 = 76800 B) = 54272 B
-// sizeof(disk_entry_t) = 72 B
-// 54272 / 72 = 753 -> MAX_DISK_IMAGES
-// replaces
-// disk_entry_t g_disk_list[MAX_DISK_IMAGES];
-// to reduce RAM usage
-disk_entry_t* g_disk_list = (disk_entry_t*)(mii_ram + 76800);
+disk_entry_t g_disk_list[MAX_DISK_IMAGES];
 int g_disk_count = 0;
 loaded_disk_t g_loaded_disks[2] = {0};
 

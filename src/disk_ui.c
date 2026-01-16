@@ -287,11 +287,12 @@ void disk_ui_init_with_emulator(mii_t *mii, int disk2_slot) {
 }
 
 #include "ff.h"
-extern uint8_t mii_ram[0x20000];
+//extern uint8_t mii_ram[0x20000];
 extern FIL fp;
 
 void disk_ui_show(void) {
     if (ui_state == DISK_UI_HIDDEN) {
+        /*
         { // TODO: error handling
             gpio_put(PICO_DEFAULT_LED_PIN, true);
             f_open(&fp, "/tmp/apple.snap", FA_CREATE_ALWAYS | FA_WRITE);
@@ -301,7 +302,7 @@ void disk_ui_show(void) {
             gpio_put(PICO_DEFAULT_LED_PIN, false);
         }
         memset(mii_ram, 0, sizeof(mii_ram));
-
+*/
         gpio_put(PICO_DEFAULT_LED_PIN, true);
         // Scan for disk images
         int count = disk_scan_directory();
@@ -317,6 +318,7 @@ void disk_ui_show(void) {
 }
 
 void disk_ui_hide(void) {
+    /*
     { // TODO: error handling
         gpio_put(PICO_DEFAULT_LED_PIN, true);
         if (FR_OK == f_open(&fp, "/tmp/apple.snap", FA_READ)) {
@@ -326,6 +328,7 @@ void disk_ui_hide(void) {
         }
         gpio_put(PICO_DEFAULT_LED_PIN, false);
     }
+    */
     ui_state = DISK_UI_HIDDEN;
     ui_rendered = false;
     ui_dirty = false;
