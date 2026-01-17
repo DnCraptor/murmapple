@@ -248,8 +248,8 @@ void pin_ram_pages_for_core0(
 
 void init_ram_pages_for(vram_t* v, uint8_t* raw, uint32_t raw_size) {
 	memset(raw, 0, raw_size);
-	memset(v->v_desc, 0, sizeof(v->v_desc));
-	memset(v->s_desc, 0, sizeof(v->s_desc));
+//	memset(v->v_desc, 0, sizeof(v->v_desc));
+//	memset(v->s_desc, 0, sizeof(v->s_desc));
 	// mark free pages to me in RAM
 	for (int i = 0; i < raw_size / RAM_PAGE_SIZE; ++i) {
 		uint8_t lba = i;

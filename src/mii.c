@@ -38,7 +38,7 @@ extern const uint8_t mii_rom_iiee[16384];
 static uint8_t rp2350_sw_mem[256] __aligned(256);        // Soft switch area
 static uint8_t rp2350_card_rom[0x0F00] __aligned(256);   // Card ROM area ($C100-$CFFF = 15 pages)
 
-uint8_t vram[2 * RAM_PAGES_PER_POOL * RAM_PAGE_SIZE] __aligned(4096); // 2 * 96 pages = 2 * 24 KB = 48 KB
+uint8_t vram[2 * RAM_PAGES_PER_POOL * RAM_PAGE_SIZE] __aligned(4096);
 
 static vram_t main_vram_d = {
 	.filename = "/tmp/mii_main.swap",
@@ -736,8 +736,8 @@ mii_init(
 	mii->speed = MII_SPEED_NTSC;
 	mii->timer.map = 0;
 
-	__dmb();          // Data Memory Barrier
-	vram_locked = true;
+//	__dmb();          // Data Memory Barrier
+//	vram_locked = true;
 
 	MII_DEBUG_PRINTF("  mii_init: setting up banks...\n");
 	for (int i = 0; i < MII_BANK_COUNT; i++) {

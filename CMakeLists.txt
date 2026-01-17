@@ -180,7 +180,7 @@ else()
     endif ()
 endif()
 
-target_link_libraries(drivers pico_stdlib hardware_dma hardware_pio hardware_spi)
+target_link_libraries(drivers pico_stdlib hardware_dma hardware_pio hardware_spi hardware_pwm)
 
 target_include_directories(${BUILD_NAME} PRIVATE
     src
@@ -202,7 +202,8 @@ target_compile_definitions(${BUILD_NAME} PRIVATE
     PICO_AUDIO_I2S_DMA_CHANNEL=6
     PICO_AUDIO_I2S_DATA_PIN=${I2S_DATA_PIN}
     PICO_AUDIO_I2S_CLOCK_PIN_BASE=${I2S_CLOCK_PIN_BASE}
-#    FEATURE_AUDIO=1
+#    FEATURE_AUDIO_I2S=1
+    FEATURE_AUDIO_PWM=1
 )
 
 if(PS2_KEYBOARD_ENABLED)

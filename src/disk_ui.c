@@ -7,6 +7,7 @@
 
 #include <pico.h>
 #include <pico/stdlib.h>
+#include <hardware/sync.h>
 #include <stdio.h>
 #include <string.h>
 #include "disk_ui.h"
@@ -342,6 +343,7 @@ void disk_ui_toggle(void) {
 }
 
 bool __scratch_x() disk_ui_is_visible(void) {
+    __dmb();
     return ui_state != DISK_UI_HIDDEN;
 }
 

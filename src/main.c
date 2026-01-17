@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pico.h>
+#include <hardware/pwm.h>
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
 #include "hardware/vreg.h"
@@ -46,12 +48,17 @@
 
 void mii_speaker_click(mii_speaker_t *speaker) {
     (void)speaker;
-#ifdef FEATURE_AUDIO
+#ifdef FEATURE_AUDIO_I2S
     // Forward speaker clicks to I2S audio driver
     extern mii_t g_mii;
     if (mii_audio_i2s_is_init()) {
         mii_audio_speaker_click(g_mii.cpu.total_cycle);
     }
+#endif
+#ifdef FEATURE_AUDIO_PWM
+    static bool state = true;
+    pwm_set_gpio_level(BEEPER_PIN, state ? ((1 << 12) - 1) : 0);
+    state = !state;
 #endif
 }
 
@@ -373,6 +380,14 @@ static void load_char_rom(mii_t *mii, const uint8_t *rom, size_t len) {
     }
 }
 
+static void PWM_init_pin(uint8_t pinN, uint16_t max_lvl) {
+    pwm_config config = pwm_get_default_config();
+    gpio_set_function(pinN, GPIO_FUNC_PWM);
+    pwm_config_set_clkdiv(&config, 1.0);
+    pwm_config_set_wrap(&config, max_lvl); // MAX PWM value
+    pwm_init(pwm_gpio_to_slice_num(pinN), &config, true);
+}
+
 int main() {
     // Overclock support: For speeds > 252 MHz, increase voltage first
 #if CPU_CLOCK_MHZ > 252
@@ -619,7 +634,7 @@ int main() {
     multicore_launch_core1(core1_main);
     MII_DEBUG_PRINTF("Core 1 launched\n");
     
-#ifdef FEATURE_AUDIO
+#ifdef FEATURE_AUDIO_I2S
     // Initialize I2S audio
     MII_DEBUG_PRINTF("Initializing I2S audio...\n");
     if (mii_audio_i2s_init()) {
@@ -628,6 +643,9 @@ int main() {
     } else {
         MII_DEBUG_PRINTF("I2S audio initialization failed\n");
     }
+#endif
+#ifdef FEATURE_AUDIO_PWM
+    PWM_init_pin(BEEPER_PIN, (1 << 12) - 1);
 #endif
 
     MII_DEBUG_PRINTF("Starting emulation on core 0...\n");
@@ -894,7 +912,7 @@ int main() {
         total_cpu_time += (cpu_end - cpu_start);
         total_cycles_run += (uint32_t)(cycles_after - cycles_before);
 
-#ifdef FEATURE_AUDIO
+#ifdef FEATURE_AUDIO_I2S
         // Update audio output - fills I2S buffers
         mii_audio_update(cycles_after, a2_cycles_per_second);
 #endif
