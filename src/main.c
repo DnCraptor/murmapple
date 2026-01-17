@@ -311,7 +311,7 @@ static void core1_main(void) {
             disk_ui_render(graphics_get_buffer(), HDMI_WIDTH, HDMI_HEIGHT);
         } else {
         	__dmb();          // Data Memory Barrier
-            if (!vram_locked)
+        //    if (!vram_locked)
                 mii_video_scale_to_hdmi(&g_mii.video, graphics_get_buffer());
         }
 

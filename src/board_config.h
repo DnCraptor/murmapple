@@ -7,6 +7,7 @@
 #ifndef BOARD_CONFIG_H
 #define BOARD_CONFIG_H
 
+#include "pico.h"
 #include "hardware/structs/sysinfo.h"
 #include "hardware/vreg.h"
 
@@ -114,6 +115,15 @@ static inline uint get_psram_pin(void) {
 
 #define BEEPER_PIN 28
 
+#define PSRAM
+#define PSRAM_SPINLOCK 1
+#define PSRAM_ASYNC 1
+
+#define PSRAM_PIN_CS 18
+#define PSRAM_PIN_SCK 19
+#define PSRAM_PIN_MOSI 20
+#define PSRAM_PIN_MISO 21
+
 #endif // BOARD_M1
 
 //=============================================================================
@@ -153,6 +163,15 @@ static inline uint get_psram_pin(void) {
 #define I2S_CLOCK_PIN_BASE 10
 
 #define BEEPER_PIN 9
+
+//#define PSRAM
+#define PSRAM_SPINLOCK 1
+#define PSRAM_ASYNC 1
+
+#define PSRAM_PIN_CS 8
+#define PSRAM_PIN_SCK 6
+#define PSRAM_PIN_MOSI 7
+#define PSRAM_PIN_MISO 4
 
 #endif // BOARD_M2
 
