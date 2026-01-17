@@ -574,6 +574,12 @@ int disk_loader_init(void) {
     return 0;
 }
 
+static int disk_entry_cmp_name(const void *a, const void *b) {
+    const disk_entry_t *da = (const disk_entry_t *)a;
+    const disk_entry_t *db = (const disk_entry_t *)b;
+    return strcmp(da->filename, db->filename);
+}
+
 // Scan /apple directory for disk images
 int disk_scan_directory(void) {
     if (!sd_mounted) {
@@ -624,6 +630,16 @@ int disk_scan_directory(void) {
     }
     
     f_closedir(&dir);
+
+
+    if (g_disk_count > 1) {
+        qsort(
+            g_disk_list,
+            g_disk_count,
+            sizeof(disk_entry_t),
+            disk_entry_cmp_name
+        );
+    }    
     return g_disk_count;
 }
 
