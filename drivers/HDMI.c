@@ -49,7 +49,7 @@ void graphics_set_shift(int x, int y) {
     graphics_buffer_shift_y = y;
 }
 
-static struct video_mode_t video_mode[] = {
+static struct video_mode_t video_mode[] __scratch_x("video_mode") = {
     { // 640x480 60Hz
         .h_total = 524,
         .h_width = 480,
@@ -58,15 +58,15 @@ static struct video_mode_t video_mode[] = {
     }
 };
 
-struct video_mode_t __not_in_flash_func(graphics_get_video_mode)(int mode) {
+struct video_mode_t __scratch_x() graphics_get_video_mode(int mode) {
     return video_mode[0];
 }
 
-int __not_in_flash_func(get_video_mode)() {
+int __scratch_x() get_video_mode() {
     return 0;
 }
 
-void __not_in_flash_func(vsync_handler)() {
+void __scratch_x() vsync_handler() {
     // Called from DMA IRQ at frame boundary.
     graphics_frame_count++;
 }
@@ -82,10 +82,10 @@ static int SM_video = -1;
 static int SM_conv = -1;
 
 //буфер  палитры 256 цветов в формате R8G8B8
-static uint32_t palette[256];
+static uint32_t palette[256] __scratch_x("palette");
 
 // Color substitution map for HDMI reserved indices 240-243
-static uint8_t color_substitute[4] = {239, 239, 239, 239};
+static uint8_t color_substitute[4] __scratch_x("color_substitute") = {239, 239, 239, 239};
 
 
 #define SCREEN_WIDTH (320)
@@ -105,7 +105,7 @@ static int dma_chan_pal_conv;
 
 //DMA буферы
 //основные строчные данные
-static uint32_t* dma_lines[2] = { NULL,NULL };
+static uint32_t* dma_lines[2] __scratch_x("dma_lines") = { NULL,NULL };
 static uint32_t* DMA_BUF_ADDR[2];
 
 //ДМА палитра для конвертации
@@ -288,7 +288,7 @@ static void pio_set_x(PIO pio, const int sm, uint32_t v) {
     pio_sm_exec(pio, sm, instr_mov);
 }
 
-static void __not_in_flash() dma_handler_HDMI() {
+static void __scratch_x() dma_handler_HDMI() {
     static uint32_t inx_buf_dma;
     static uint line = 0;
     struct video_mode_t mode = video_mode[0];
