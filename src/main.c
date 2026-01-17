@@ -284,7 +284,7 @@ void clear_held_key(void) {
 
 // Flag to indicate emulator is ready
 static volatile bool g_emulator_ready = false;
-bool volatile vram_locked = true;
+bool vram_locked = true;
 
 // Core 1 - Video rendering loop
 static void core1_main(void) {
@@ -302,17 +302,8 @@ static void core1_main(void) {
     
     while (1) {
         sleep_ms(16);
-        
-        // Check if disk UI is visible
-        bool ui_visible = disk_ui_is_visible();
-        
-        // Always render into the back buffer, then request a swap on vsync.
-        if (ui_visible) {
-            disk_ui_render(graphics_get_buffer(), HDMI_WIDTH, HDMI_HEIGHT);
-        } else {
-        	__dmb();          // Data Memory Barrier
-        //    if (!vram_locked)
-                mii_video_scale_to_hdmi(&g_mii.video, graphics_get_buffer());
+        if (!disk_ui_is_visible()) {
+            mii_video_scale_to_hdmi(&g_mii.video, graphics_get_buffer());
         }
 
         // Wait until the swap has actually happened (vsync tick), then rotate buffers.
@@ -905,6 +896,8 @@ int main() {
                 debug_frames--;
             }
             mii_run_cycles(&g_mii, cycles_per_frame);
+        } else  if (!vram_locked) {
+            disk_ui_render(graphics_get_buffer(), HDMI_WIDTH, HDMI_HEIGHT);
         }
         uint64_t cycles_after = g_mii.cpu.total_cycle;
         uint32_t cpu_end = time_us_32();

@@ -725,7 +725,7 @@ static const unsigned __int128 _mii_ramworks3_config[] = {
 
 #if MII_RP2350
 
-extern bool volatile vram_locked;
+extern bool vram_locked;
 
 void
 mii_init(
@@ -736,8 +736,8 @@ mii_init(
 	mii->speed = MII_SPEED_NTSC;
 	mii->timer.map = 0;
 
-//	__dmb();          // Data Memory Barrier
-//	vram_locked = true;
+	__dmb();          // Data Memory Barrier
+	vram_locked = true;
 
 	MII_DEBUG_PRINTF("  mii_init: setting up banks...\n");
 	for (int i = 0; i < MII_BANK_COUNT; i++) {
