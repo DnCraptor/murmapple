@@ -17,7 +17,7 @@ cmake_minimum_required(VERSION 3.13)
 set(BUILD_NAME "murmapple")
 
 # Set board to Pico 2 (RP2350)
-set(PICO_BOARD pico2 CACHE STRING "Board type")
+set(PICO_BOARD pico CACHE STRING "Board type")
 
 # Board configuration variant (M1, M2)
 set(BOARD_VARIANT "M1" CACHE STRING "Board variant: M1 or M2")
@@ -202,7 +202,7 @@ target_compile_definitions(${BUILD_NAME} PRIVATE
     PICO_AUDIO_I2S_DMA_CHANNEL=6
     PICO_AUDIO_I2S_DATA_PIN=${I2S_DATA_PIN}
     PICO_AUDIO_I2S_CLOCK_PIN_BASE=${I2S_CLOCK_PIN_BASE}
-    FEATURE_AUDIO=1
+#    FEATURE_AUDIO=1
 )
 
 if(PS2_KEYBOARD_ENABLED)

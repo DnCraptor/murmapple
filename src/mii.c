@@ -11,6 +11,9 @@
 #include <string.h>
 #include <ctype.h>
 
+#include <pico.h>
+#include <hardware/sync.h>
+
 #include "mii.h"
 #include "mii_bank.h"
 #include "mii_video.h"
@@ -722,6 +725,8 @@ static const unsigned __int128 _mii_ramworks3_config[] = {
 
 #if MII_RP2350
 
+extern bool volatile vram_locked;
+
 void
 mii_init(
 		mii_t *mii )
@@ -731,6 +736,9 @@ mii_init(
 	mii->speed = MII_SPEED_NTSC;
 	mii->timer.map = 0;
 
+	__dmb();          // Data Memory Barrier
+	vram_locked = true;
+
 	MII_DEBUG_PRINTF("  mii_init: setting up banks...\n");
 	for (int i = 0; i < MII_BANK_COUNT; i++) {
 		mii->bank[i] = _mii_banks_init[i];
@@ -738,12 +746,15 @@ mii_init(
 
 	// Initialize banks (won't allocate since no_alloc is set)
 	MII_DEBUG_PRINTF("  mii_init: initializing bank memory...\n");
-	// For RP2350, only clear MAIN bank once - other banks share memory
-	// We allocated exactly the right sizes, so just clear each unique buffer once
+
 	MII_DEBUG_PRINTF("    Clearing main memory (64KB)\n");
 	init_ram_pages_for(&main_vram_d, vram, RAM_PAGES_PER_POOL * RAM_PAGE_SIZE);
 	MII_DEBUG_PRINTF("    Clearing aux memory (52KB)\n");
 	init_ram_pages_for(&aux_vram_d, vram, RAM_PAGES_PER_POOL * RAM_PAGE_SIZE);
+
+	vram_locked = false;
+	__dmb();          // Data Memory Barrier
+
 	MII_DEBUG_PRINTF("    Clearing soft switch area\n");
 	memset(rp2350_sw_mem, 0, sizeof(rp2350_sw_mem));
 	MII_DEBUG_PRINTF("    Clearing card ROM area\n");
