@@ -285,6 +285,7 @@ void clear_held_key(void) {
 // Flag to indicate emulator is ready
 static volatile bool g_emulator_ready = false;
 
+#if 0
 // Core 1 - Video rendering loop
 static void core1_main(void) {
     MII_DEBUG_PRINTF("Core 1: Waiting for emulator ready...\n");
@@ -316,6 +317,7 @@ static void core1_main(void) {
         last_frame = f;
     }
 }
+#endif
 
 // Static ROM structure for character ROM (in case auto-registration fails)
 static mii_rom_t char_rom_fallback = {
@@ -622,9 +624,11 @@ int main() {
     g_emulator_ready = true;
     
     // Launch video rendering on core 1
+#if 0
     MII_DEBUG_PRINTF("Starting video rendering on core 1...\n");
     multicore_launch_core1(core1_main);
     MII_DEBUG_PRINTF("Core 1 launched\n");
+#endif
     
 #ifdef FEATURE_AUDIO_I2S
     // Initialize I2S audio
