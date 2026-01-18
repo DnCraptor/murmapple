@@ -302,7 +302,7 @@ static void core1_main(void) {
     while (1) {
         sleep_ms(16);
         if (!disk_ui_is_visible()) {
-            mii_video_scale_to_hdmi(&g_mii.video, graphics_get_buffer());
+      //      mii_video_scale_to_hdmi(&g_mii.video, graphics_get_buffer());
         }
 
         // Wait until the swap has actually happened (vsync tick), then rotate buffers.
@@ -607,7 +607,7 @@ int main() {
     };
     mii_startscreen_show(&screen_info);
 #endif
-    
+
     // Let ROM boot naturally
     MII_DEBUG_PRINTF("Running ROM boot sequence (1M cycles)...\n");
     mii_run_cycles(&g_mii, 1000000);
@@ -897,6 +897,7 @@ int main() {
                 debug_frames--;
             }
             mii_run_cycles(&g_mii, cycles_per_frame);
+            mii_video_scale_to_hdmi(&g_mii.video, graphics_get_buffer());
         } else {
             disk_ui_render(graphics_get_buffer(), HDMI_WIDTH, HDMI_HEIGHT);
         }

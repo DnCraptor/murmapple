@@ -1455,7 +1455,6 @@ const uint8_t rp2350_ci_to_hw[16] = {
 	[CI_AQUA] = 14,
 };
 
-#include <pico.h>
 extern volatile int lock_y;
 static uint8_t line_buffer[320 / 2] __aligned(4) __scratch_x("line_buffer");
 
