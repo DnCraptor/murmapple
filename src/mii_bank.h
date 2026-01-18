@@ -48,7 +48,7 @@ typedef struct sram_page_t {
 #define RAM_IN_PAGE_ADDR_MASK (0x000000FF) // one byte adresses 256 pages
 #define RAM_PAGE_SIZE (0x00000100L)
 #if PICO_RP2040
-#define RAM_PAGES_PER_POOL (224) //(96)
+#define RAM_PAGES_PER_POOL (232) //(96)
 #else
 #define RAM_PAGES_PER_POOL (256)
 #endif
@@ -93,18 +93,28 @@ void pin_ram_pages_for(
         const uint32_t start_addr,
         const uint16_t len_bytes)
 {
-	/* TODO: core1 -> core0
     if (!v)
         return;
-    for (uint32_t p = 2; p < MAX_PAGES_PER_POOL; ++p) {
+
+    const uint32_t first = start_addr >> SHIFT_AS_DIV;
+    const uint32_t last  = (len_bytes == 0)
+        ? first - 1
+        : (start_addr + len_bytes - 1) >> SHIFT_AS_DIV;
+
+	for (uint32_t p = 2; p < MAX_PAGES_PER_POOL; ++p) {
         v->v_desc[p].pinned = 0;
     }
-    for (uint32_t off = 0; off < len_bytes; off += RAM_PAGE_SIZE) {
-		uint32_t addr = start_addr + off;
-		get_ram_page_for(v, addr); // ensure page is in RAM
-        v->v_desc[addr / RAM_PAGE_SIZE].pinned = 1; // mark to not unload related SRAM page
-    }
-	*/
+	// pages 0 & 1 always pinned
+    for (uint32_t vpage = 2; vpage < MAX_PAGES_PER_POOL; ++vpage) {
+        if (vpage >= first && vpage <= last) {
+            if (!v->v_desc[vpage].pinned) {
+                get_ram_page_for(v, vpage << SHIFT_AS_DIV);
+                v->v_desc[vpage].pinned = 1;
+            }
+        } else {
+            v->v_desc[vpage].pinned = 0;
+        }
+    }	
 }
 
 inline static

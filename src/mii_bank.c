@@ -233,19 +233,6 @@ uint8_t get_ram_page_for(vram_t* __restrict vram, const uint16_t addr16) {
 	return lba_page;
 }
 
-inline static
-void pin_ram_pages_for_core0(
-        vram_t* v,
-        const uint32_t start_addr,
-        const uint16_t len_bytes)
-{
-    for (uint32_t off = 0; off < len_bytes; off += RAM_PAGE_SIZE) {
-		uint32_t addr = start_addr + off;
-		get_ram_page_for(v, addr); // ensure page is in RAM
-        v->v_desc[addr / RAM_PAGE_SIZE].pinned = 1; // mark to not unload related SRAM page
-    }
-}
-
 void init_ram_pages_for(vram_t* v, uint8_t* raw, uint32_t raw_size) {
 	memset(raw, 0, raw_size);
 //	memset(v->v_desc, 0, sizeof(v->v_desc));
@@ -267,17 +254,4 @@ void init_ram_pages_for(vram_t* v, uint8_t* raw, uint32_t raw_size) {
 		UINT wb;
 		f_write(&v->f, raw, 256, &wb); // save zero-bytes pages
 	}
-
-	/* ---------- TEMPORARY VIDEO W/A ---------- */
-	// TEXT / LORES page 1 + 2 (2 x 1 KB = 8 pages)
-	pin_ram_pages_for_core0(v, 0x0400, 0x0400); // $0400–$07FF
-	pin_ram_pages_for_core0(v, 0x0800, 0x0400); // $0800–$0BFF
-
-	// HIRES / DHIRES page 1 (8K = 32 pages)
-	pin_ram_pages_for_core0(v, 0x2000, 0x2000); // $2000–$3FFF
-
-	// HIRES / DHIRES page 2 (8k = 32 pages)
-	pin_ram_pages_for_core0(v, 0x4000, 0x2000); // $4000–$5FFF
-	
-	// TOTAL pinned 74 pages
 }
