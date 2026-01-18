@@ -311,14 +311,15 @@ static void __scratch_x() dma_handler_HDMI() {
 
     if (line < mode.h_width ) {
         int y = line >> 1;
-        register uint8_t* input_buffer = graphics_get_buffer() + y * SCREEN_WIDTH;
+        register uint8_t* input_buffer = graphics_get_buffer() + y * (SCREEN_WIDTH / 2);
         register uint8_t* output_buffer = activ_buf + 72; //для выравнивания синхры;
         // Copy from framebuffer, substituting HDMI reserved colors
         lock_y = y;
-        for (register int i = 0; i < SCREEN_WIDTH; i++) {
+        for (register int i = 0; i < SCREEN_WIDTH / 2; i++) {
             register uint8_t c = input_buffer[i];
-            if (c >= 240 && c <= 243) c = color_substitute[c - 240];
-            output_buffer[i] = c;
+            register int j = i << 1;
+            output_buffer[j] = c & 0xF;
+            output_buffer[j+1] = c >> 4;
         }
         lock_y = -1;
         
@@ -739,8 +740,9 @@ void graphics_restore_sync_colors(void) {
     conv_color64[2 * (base_inx + 3) + 1] = get_ser_diff_data(b0, b0, b0);
 }
 
+static uint8_t graphics_buffer[SCREEN_WIDTH * SCREEN_HEIGHT / 2] __aligned(4096) = { 0 };
+
 uint8_t* graphics_get_buffer() {
-    static uint8_t graphics_buffer[SCREEN_WIDTH * SCREEN_HEIGHT] = { 0 };
     return graphics_buffer;
 }
 

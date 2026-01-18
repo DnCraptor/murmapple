@@ -25,6 +25,7 @@ static mii_t *g_mii = NULL;
 int g_disk2_slot = 6;  // Default slot for Disk II
 
 // UI state - volatile to prevent race conditions between cores
+static bool fb_needs_clear = true;
 static volatile disk_ui_state_t ui_state = DISK_UI_HIDDEN;
 static volatile int selected_drive = 0;      // 0 or 1
 static volatile int selected_file = 0;       // Currently highlighted file
@@ -156,13 +157,24 @@ static const uint8_t font_6x8[][8] = {
     {0x00,0x00,0x40,0xA8,0x10,0x00,0x00,0x00}, // 126 ~
 };
 
+static inline void put_pixel_4bpp(uint8_t *fb, uint32_t pix_idx, uint8_t color) {
+    uint8_t *p = &fb[pix_idx >> 1];
+    if (pix_idx & 1) {
+        // high nibble
+        *p = (*p & 0x0F) | (color << 4);
+    } else {
+        // low nibble
+        *p = (*p & 0xF0) | color;
+    }
+}
+
 // Draw a filled rectangle
 static void draw_rect(uint8_t *fb, int width, int x, int y, int w, int h, uint8_t color) {
     for (int dy = 0; dy < h; dy++) {
         if (y + dy < 0 || y + dy >= 240) continue;
         for (int dx = 0; dx < w; dx++) {
             if (x + dx < 0 || x + dx >= width) continue;
-            fb[(y + dy) * width + (x + dx)] = color;
+            put_pixel_4bpp(fb, (y + dy) * width + (x + dx), color);
         }
     }
 }
@@ -180,7 +192,7 @@ static void draw_char(uint8_t *fb, int fb_width, int x, int y, char c, uint8_t c
         for (int col = 0; col < 6; col++) {
             if (x + col < 0 || x + col >= fb_width) continue;
             if (bits & (0x80 >> col)) {
-                fb[(y + row) * fb_width + (x + col)] = color;
+                put_pixel_4bpp(fb, (y + row) * fb_width + (x + col), color);
             }
         }
     }
@@ -300,7 +312,7 @@ void disk_ui_show(void) {
             f_close(&fp);
             gpio_put(PICO_DEFAULT_LED_PIN, false);
         }
-        memset(vram, 0, sizeof(vram));
+        fb_needs_clear = true;
 
         gpio_put(PICO_DEFAULT_LED_PIN, true);
         // Scan for disk images
@@ -555,6 +567,11 @@ void disk_ui_render(uint8_t *framebuffer, int width, int height) {
     
     if (state == DISK_UI_HIDDEN) {
         return;
+    }
+
+    if (fb_needs_clear) {
+        memset(framebuffer, 0x00, (width * height) >> 1); // 4 bpp
+        fb_needs_clear = false;
     }
 
     if (framebuffer != g_last_framebuffer) {

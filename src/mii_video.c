@@ -5,6 +5,8 @@
  *
  * SPDX-License-Identifier: MIT
  */
+#include <pico.h>
+#include <pico/stdlib.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1455,7 +1457,7 @@ const uint8_t rp2350_ci_to_hw[16] = {
 
 #include <pico.h>
 extern volatile int lock_y;
-static uint8_t line_buffer[320] __aligned(4) __scratch_x("line_buffer");
+static uint8_t line_buffer[320 / 2] __aligned(4) __scratch_x("line_buffer");
 
 // Render text mode (40 column) to framebuffer - OPTIMIZED
 static void __attribute__((hot))
@@ -1508,21 +1510,17 @@ mii_video_render_text40_rp2350(
 					c = (int)c + flash;
 
 				const uint8_t *char_data = rom_base + (c << 3);
-				int fb_x_base = x * 8;
-				uint8_t *fb_row_base = fb + 24 * fb_width + row * 8 * fb_width + fb_x_base;
+				int fb_x_base = x * (8 / 2);
+				uint8_t *fb_row_base = fb + (24 / 2) * fb_width + row * (8 / 2) * fb_width + fb_x_base;
 
 				for (int cy = 0; cy < 8; cy++) {
 					uint8_t bits = char_data[cy];
-					uint8_t *fb_ptr = fb_row_base + cy * fb_width;
+					uint8_t *fb_ptr = fb_row_base + cy * (fb_width >> 1);
 					// Unrolled inner loop for 7 pixels + 1 padding
-					fb_ptr[0] = (bits & 0x01) ? 0 : 15;
-					fb_ptr[1] = (bits & 0x02) ? 0 : 15;
-					fb_ptr[2] = (bits & 0x04) ? 0 : 15;
-					fb_ptr[3] = (bits & 0x08) ? 0 : 15;
-					fb_ptr[4] = (bits & 0x10) ? 0 : 15;
-					fb_ptr[5] = (bits & 0x20) ? 0 : 15;
-					fb_ptr[6] = (bits & 0x40) ? 0 : 15;
-					fb_ptr[7] = 0;  // 8th pixel padding
+					fb_ptr[0] = ((bits & 0x01) ? 0 : 15) | ((bits & 0x02) ? 0 : (15 << 4));
+					fb_ptr[1] = ((bits & 0x04) ? 0 : 15) | ((bits & 0x08) ? 0 : (15 << 4));
+					fb_ptr[2] = ((bits & 0x10) ? 0 : 15) | ((bits & 0x20) ? 0 : (15 << 4));
+					fb_ptr[3] = (bits & 0x40) ? 0 : 15; // 8th pixel padding
 				}
 			}
 		} else {
@@ -1546,13 +1544,23 @@ mii_video_render_text40_rp2350(
 					int fb_y = 24 + row * 8 + cy;
 					if (fb_y >= 240)
 						continue;
-					int fb_x_base = x * 4;
-					uint8_t *fb_ptr = fb + fb_y * fb_width + fb_x_base;
-					for (int px = 0; px < 4 && fb_x_base + px < fb_width; px++) {
-						int bit0 = px * 2;
-						bool pixel = ((bits >> bit0) & 1) | ((bits >> (bit0 + 1)) & 1);
-						fb_ptr[px] = pixel ? 0 : 15;
-					}
+					// 4 pixels → 2 bytes
+					int fb_x_base = x * 2; // bytes
+					uint8_t *fb_ptr = fb + fb_y * (fb_width >> 1) + fb_x_base;
+					// px = 0,1,2,3 → 4 logical pixels
+					// pack as (px0|px1) and (px2|px3)
+					int bit0 = 0;
+					int bit1 = 2;
+					int bit2 = 4;
+					int bit3 = 6;
+
+					uint8_t p0 = (((bits >> bit0) & 1) | ((bits >> (bit0 + 1)) & 1)) ? 0 : 15;
+					uint8_t p1 = (((bits >> bit1) & 1) | ((bits >> (bit1 + 1)) & 1)) ? 0 : 15;
+					uint8_t p2 = (((bits >> bit2) & 1) | ((bits >> (bit2 + 1)) & 1)) ? 0 : 15;
+					uint8_t p3 = (((bits >> bit3) & 1) | ((bits >> (bit3 + 1)) & 1)) ? 0 : 15;
+
+					fb_ptr[0] = p0 | (p1 << 4);
+					fb_ptr[1] = p2 | (p3 << 4);
 				}
 			}
 		}
@@ -1605,20 +1613,18 @@ mii_video_render_text40_mixed_rp2350(
 					c = (int)c + flash;
 
 				const uint8_t *char_data = rom_base + (c << 3);
-				int fb_x_base = x * 8;
-				uint8_t *fb_row_base = fb + 24 * fb_width + row * 8 * fb_width + fb_x_base;
+				int fb_x_base = x * (8 / 2);
+				uint8_t *fb_row_base = fb + (24 / 2) * fb_width + row * (8 / 2) * fb_width + fb_x_base;
 
 				for (int cy = 0; cy < 8; cy++) {
 					uint8_t bits = char_data[cy];
-					uint8_t *fb_ptr = fb_row_base + cy * fb_width;
-					fb_ptr[0] = (bits & 0x01) ? 0 : 15;
-					fb_ptr[1] = (bits & 0x02) ? 0 : 15;
-					fb_ptr[2] = (bits & 0x04) ? 0 : 15;
-					fb_ptr[3] = (bits & 0x08) ? 0 : 15;
-					fb_ptr[4] = (bits & 0x10) ? 0 : 15;
-					fb_ptr[5] = (bits & 0x20) ? 0 : 15;
-					fb_ptr[6] = (bits & 0x40) ? 0 : 15;
-					fb_ptr[7] = 0;
+					uint8_t *fb_ptr = fb_row_base + cy * (fb_width >> 1);
+
+					fb_ptr[0] = ((bits & 0x01) ? 0 : 15) | ((bits & 0x02) ? 0 : (15 << 4));
+					fb_ptr[1] = ((bits & 0x04) ? 0 : 15) | ((bits & 0x08) ? 0 : (15 << 4));
+					fb_ptr[2] = ((bits & 0x10) ? 0 : 15) | ((bits & 0x20) ? 0 : (15 << 4));
+					fb_ptr[3] = (bits & 0x40) ? 0 : 15;
+
 				}
 			}
 		} else {
@@ -1634,13 +1640,21 @@ mii_video_render_text40_mixed_rp2350(
 					uint8_t bits = char_data[cy];
 					int fb_y = 24 + row * 8 + cy;
 					if (fb_y >= 240) continue;
-					int fb_x_base = x * 4;
-					uint8_t *fb_ptr = fb + fb_y * fb_width + fb_x_base;
-					for (int px = 0; px < 4 && fb_x_base + px < fb_width; px++) {
-						int bit0 = px * 2;
-						bool pixel = ((bits >> bit0) & 1) | ((bits >> (bit0 + 1)) & 1);
-						fb_ptr[px] = pixel ? 0 : 15;
-					}
+					int fb_x_base = x * (4 / 2);
+					uint8_t *fb_ptr = fb + fb_y * (fb_width >> 1) + fb_x_base;
+
+					int bit0 = 0;
+					int bit1 = 2;
+					int bit2 = 4;
+					int bit3 = 6;
+
+					uint8_t p0 = (((bits >> bit0) & 1) | ((bits >> (bit0 + 1)) & 1)) ? 0 : 15;
+					uint8_t p1 = (((bits >> bit1) & 1) | ((bits >> (bit1 + 1)) & 1)) ? 0 : 15;
+					uint8_t p2 = (((bits >> bit2) & 1) | ((bits >> (bit2 + 1)) & 1)) ? 0 : 15;
+					uint8_t p3 = (((bits >> bit3) & 1) | ((bits >> (bit3 + 1)) & 1)) ? 0 : 15;
+
+					fb_ptr[0] = p0 | (p1 << 4);
+					fb_ptr[1] = p2 | (p3 << 4);
 				}
 			}
 		}
@@ -1688,7 +1702,7 @@ mii_video_render_hires_rp2350(
 		mii_bank_read(main_bank, line_addr, line_buf, 40);		
 		uint8_t *fb_row = line_buffer;
 		// Clear the whole row to black so borders don't retain stale pixels.
-		memset(fb_row, HW_BLACK, (size_t)fb_width);
+		memset(fb_row, HW_BLACK, (size_t)(fb_width >> 1));
 
 		uint8_t b0 = 0;
 		uint8_t b1 = line_buf[0];
@@ -1720,18 +1734,27 @@ mii_video_render_hires_rp2350(
 					}
 					uint8_t ci = (uint8_t)mii_base_clut.hires[idx];
 					uint8_t hw = rp2350_ci_to_hw[ci & 0x0f];
-					int x = col * 7 + i;
-					fb_row[x_off + x] = hw;
+					int x = x_off + col * 7 + i;
+					if (x & 1)
+						fb_row[x >> 1] |= hw << 4;
+					else
+						fb_row[x >> 1] |= hw;
 				} else {
-					int x = col * 7 + i;
-					fb_row[x_off + x] = pixel ? HW_WHITE : HW_BLACK;
+					int x = x_off + col * 7 + i;
+					if (x & 1)
+						fb_row[x >> 1] |= pixel ? (HW_WHITE << 4) : (HW_BLACK << 4);
+					else
+						fb_row[x >> 1] |= pixel ? HW_WHITE : HW_BLACK;
 				}
 			}
 			b0 = b1;
 			b1 = b2;
 		}
-		while (fb_y == lock_y) ; // unsure unlocked
-		memcpy(fb + fb_y * fb_width, line_buffer, fb_width);
+		for(int l = 0; l < 100 && fb_y == lock_y; ++l) {
+			tight_loop_contents();
+			sleep_ms(1); // unsure unlocked, but wait not more than 100ms, to avoid busy-lock
+		}
+		memcpy(fb + fb_y * (fb_width >> 1), line_buffer, (fb_width >> 1));
 	}
 }
 
@@ -1741,6 +1764,7 @@ mii_video_render_dhires_rp2350(
 		uint8_t *fb,
 		int fb_width)
 {
+	fb_width >>= 1;
 	mii_bank_t *main_bank = &mii->bank[MII_BANK_MAIN];
 	mii_bank_t *aux_bank = &mii->bank[MII_VIDEO_BANK];
 	const uint32_t sw = mii->sw_state;
@@ -1766,6 +1790,7 @@ mii_video_render_dhires_rp2350(
         mii_bank_read(main_bank, line_addr, main_row, 40);
         mii_bank_read(aux_bank,  line_addr, aux_row,  40);
 
+		memset(line_buffer, 0, sizeof(line_buffer));
 		uint8_t *fb_row = line_buffer;
 		if (!color) {
 			// Mono: combine MAIN/AUX 7-bit streams into 14-bit pixels (560 wide)
@@ -1781,7 +1806,11 @@ mii_video_render_dhires_rp2350(
 				}
 				int bi = src % 14;
 				uint8_t pixel = (ext >> bi) & 1;
-				fb_row[x] = pixel ? 15 : 0;
+				if (x & 1) {
+					fb_row[x >> 1] |= pixel ? (15 << 4) : 0;
+				} else {
+					fb_row[x >> 1] |= pixel ? 15 : 0;
+				}
 			}
 		}
 		else {
@@ -1807,10 +1836,17 @@ mii_video_render_dhires_rp2350(
 					(_mii_get_1bits_rp2350(bits, i + 1) << (3 - ((d + 1) % 4))) +
 					(_mii_get_1bits_rp2350(bits, i)     << (3 - (d % 4)));
 				uint8_t ci = (uint8_t)mii_base_clut.dhires[pixel];
-				fb_row[x] = rp2350_ci_to_hw[ci & 0x0f];
+				if (x & 1) {
+					fb_row[x >> 1] |= rp2350_ci_to_hw[ci & 0x0f] << 4;
+				} else {
+					fb_row[x >> 1] |= rp2350_ci_to_hw[ci & 0x0f];
+				}
 			}
 		}
-		while (fb_y == lock_y) ; // unsure unlocked
+		for(int l = 0; l < 100 && fb_y == lock_y; ++l) {
+			tight_loop_contents();
+			sleep_ms(1); // unsure unlocked, but wait not more than 100ms, to avoid busy-lock
+		}
 		memcpy(fb + fb_y * fb_width, line_buffer, fb_width);
 	}
 }
@@ -1822,6 +1858,7 @@ mii_video_render_lores_rp2350(
 		uint8_t *fb,
 		int fb_width)
 {
+	fb_width >>= 1;
 	mii_bank_t *main_bank = &mii->bank[MII_BANK_MAIN];
 	mii_bank_t *aux_bank = &mii->bank[MII_VIDEO_BANK];
 	
@@ -1857,15 +1894,16 @@ mii_video_render_lores_rp2350(
 		for (int col = 0; col < 40; col++) {
 			uint8_t byte = main_row[col];  // Direct memory access
 			uint8_t color = is_bottom_half ? ((byte >> 4) & 0x0F) : (byte & 0x0F);
+			color = (color << 4) | color;
 			
 			// Each LORES column maps to 8 framebuffer columns (40 * 8 = 320)
-			int fb_x_start = col * 8;
+			int fb_x_start = col * (8 / 2);
 			
 			// Fill the 8x5 pixel block - use memset for speed
 			for (int dy = 0; dy < 5 && (fb_y_start + dy) < 240; dy++) {
 				uint8_t *fb_row = fb + (fb_y_start + dy) * fb_width + fb_x_start;
 				// Use uint64_t write for 8 pixels at once (assumes alignment)
-				memset(fb_row, color, 8);
+				memset(fb_row, color, 4);
 			}
 		}
 	}
@@ -1917,7 +1955,7 @@ mii_video_draw_floppy_indicator(uint8_t *hdmi_buffer, int motor_state, uint32_t 
 	};
 	
 	// Color: Green for drive 1, Red/Orange for drive 2
-	uint8_t body_color = (motor_state == 1) ? 0x1C : 0xE0;  
+	uint8_t body_color = (motor_state == 1) ? 12 : 4;
 	
 	for (int y = 0; y < 10; y++) {
 		uint16_t row = floppy_icon[y];
@@ -1925,7 +1963,11 @@ mii_video_draw_floppy_indicator(uint8_t *hdmi_buffer, int motor_state, uint32_t 
 			if (row & (1 << (9 - x))) {
 				int offset = (start_y + y) * 320 + (start_x + x);
 				// Solid color
-				hdmi_buffer[offset] = body_color;
+				if (offset & 1) {
+					hdmi_buffer[offset >> 1] |= body_color << 4;
+				} else {
+					hdmi_buffer[offset >> 1] |= body_color;
+				}
 			}
 		}
 	}
@@ -1942,9 +1984,9 @@ mii_video_scale_to_hdmi(
 	
 	// Clear top and bottom borders (24 rows each) to black
 	// Top border: rows 0-23
-	memset(hdmi_buffer, 0, 320 * 24);
+	memset(hdmi_buffer, 0, 320 * 24 / 2);
 	// Bottom border: rows 216-239
-	memset(hdmi_buffer + 320 * 216, 0, 320 * 24);
+	memset(hdmi_buffer + 320 * 216 / 2, 0, 320 * 24 / 2);
 	
 	uint32_t sw = mii->sw_state;
 	bool text_mode = !!(sw & M_SWTEXT);

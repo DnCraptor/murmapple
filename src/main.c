@@ -593,7 +593,8 @@ int main() {
 #ifdef BOARD_M2
     board_num = 2;
 #endif
-    
+
+#ifndef PICO_RP2040 // for RP2350 only
     mii_startscreen_info_t screen_info = {
         .title = "MurmApple",
         .subtitle = "Apple IIe Emulator",
@@ -605,6 +606,7 @@ int main() {
         .board_variant = board_num,
     };
     mii_startscreen_show(&screen_info);
+#endif
     
     // Let ROM boot naturally
     MII_DEBUG_PRINTF("Running ROM boot sequence (1M cycles)...\n");
