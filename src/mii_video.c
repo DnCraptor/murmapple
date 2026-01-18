@@ -1573,6 +1573,7 @@ mii_video_render_text40_mixed_rp2350(
 		uint8_t *fb,
 		int fb_width)
 {
+	fb_width >>= 1;
 	mii_bank_t *main_bank = &mii->bank[MII_BANK_MAIN];
 	mii_bank_t *aux_bank = &mii->bank[MII_VIDEO_BANK];
 	mii_video_t *video = &mii->video;
@@ -1604,43 +1605,47 @@ mii_video_render_text40_mixed_rp2350(
 	for (int row = 20; row < 24; row++) {
 		uint16_t line_addr = base_addr + (row & 7) * 0x80 + (row / 8) * 0x28;
 		mii_bank_read(main_bank, line_addr, main_row, 40);
-		if (!col80) {
-			for (int x = 0; x < 40; x++) {
-				uint8_t c = main_row[x];
 
-				if (!altset && c >= 0x40 && c <= 0x7F)
-					c = (int)c + flash;
+        for (int cy = 0; cy < 8; ++cy) {
+            int fb_y = 24 + row * 8 + cy;
+            if (fb_y >= 240)
+                continue;
 
-				const uint8_t *char_data = rom_base + (c << 3);
-				int fb_x_base = x * (8 / 2);
-				uint8_t *fb_row_base = fb + (24 / 2) * fb_width + row * (8 / 2) * fb_width + fb_x_base;
+            memset(line_buffer, 0, fb_width);
 
-				for (int cy = 0; cy < 8; cy++) {
+			if (!col80) {
+				for (int x = 0; x < 40; x++) {
+					uint8_t c = main_row[x];
+
+					if (!altset && c >= 0x40 && c <= 0x7F)
+						c = (int)c + flash;
+
+					const uint8_t *char_data = rom_base + (c << 3);
+					int fb_x_base = x * (8 / 2);
+					uint8_t *fb_row_base = fb + (24 / 2) * fb_width + row * (8 / 2) * fb_width + fb_x_base;
+
 					uint8_t bits = char_data[cy];
-					uint8_t *fb_ptr = fb_row_base + cy * (fb_width >> 1);
+					uint8_t *fb_ptr = line_buffer + x * 4;
 
 					fb_ptr[0] = ((bits & 0x01) ? 0 : 15) | ((bits & 0x02) ? 0 : (15 << 4));
 					fb_ptr[1] = ((bits & 0x04) ? 0 : 15) | ((bits & 0x08) ? 0 : (15 << 4));
 					fb_ptr[2] = ((bits & 0x10) ? 0 : 15) | ((bits & 0x20) ? 0 : (15 << 4));
 					fb_ptr[3] = (bits & 0x40) ? 0 : 15;
-
 				}
-			}
-		} else {
-			mii_bank_read(aux_bank, line_addr, aux_row, 40);
-			for (int x = 0; x < 80; x++) {
-				uint8_t c = (x & 1) ? main_row[x >> 1] : aux_row[x >> 1];
+			} else {
+				mii_bank_read(aux_bank, line_addr, aux_row, 40);
+				for (int x = 0; x < 80; x++) {
+					uint8_t c = (x & 1) ? main_row[x >> 1] : aux_row[x >> 1];
 
-				if (!altset && c >= 0x40 && c <= 0x7F)
-					c = (int)c + flash;
+					if (!altset && c >= 0x40 && c <= 0x7F)
+						c = (int)c + flash;
 
-				const uint8_t *char_data = rom_base + (c << 3);
-				for (int cy = 0; cy < 8; cy++) {
+					const uint8_t *char_data = rom_base + (c << 3);
 					uint8_t bits = char_data[cy];
 					int fb_y = 24 + row * 8 + cy;
 					if (fb_y >= 240) continue;
 					int fb_x_base = x * (4 / 2);
-					uint8_t *fb_ptr = fb + fb_y * (fb_width >> 1) + fb_x_base;
+					uint8_t *fb_ptr = line_buffer + x * 2;
 
 					int bit0 = 0;
 					int bit1 = 2;
@@ -1656,6 +1661,16 @@ mii_video_render_text40_mixed_rp2350(
 					fb_ptr[1] = p2 | (p3 << 4);
 				}
 			}
+			for(int l = 0; l < 100 && fb_y == lock_y; ++l) {
+				tight_loop_contents();
+				sleep_ms(1); // unsure unlocked, but wait not more than 100ms, to avoid busy-lock
+			}
+
+			memcpy(
+				fb + fb_y * fb_width,
+				line_buffer,
+				fb_width
+			);
 		}
 	}
 }
@@ -1884,12 +1899,12 @@ mii_video_render_lores_rp2350(
 		int is_bottom_half = lores_row & 1;
 		
 		// Apple II screen memory address calculation
-		uint16_t line_addr = base_addr + (mem_row & 7) * 0x80 + (mem_row / 8) * 0x28;
+		uint16_t line_addr = base_addr + (mem_row & 7) * 0x80 + (mem_row >> 3) * 0x28;
 		
         mii_bank_read(main_bank, line_addr, main_row, 40);
 		// Each LORES row maps to 5 framebuffer rows (48 * 5 = 240)
 		int fb_y_start = lores_row * 5;
-		
+/*		
 		for (int col = 0; col < 40; col++) {
 			uint8_t byte = main_row[col];  // Direct memory access
 			uint8_t color = is_bottom_half ? ((byte >> 4) & 0x0F) : (byte & 0x0F);
@@ -1905,7 +1920,39 @@ mii_video_render_lores_rp2350(
 				memset(fb_row, color, 4);
 			}
 		}
+*/
+        for (int dy = 0; dy < 5; dy++) {
+            int fb_y = fb_y_start + dy;
+            if (fb_y >= 240)
+                continue;
+            // --- build one HDMI row ---
+            memset(line_buffer, 0, fb_width);
+
+            for (int col = 0; col < 40; col++) {
+                uint8_t byte = main_row[col];
+                uint8_t c = is_bottom_half ? (byte >> 4) & 0x0F : byte & 0x0F;
+                uint8_t packed = (c << 4) | c;
+
+                int x = col * 4; // bytes (8 pixels)
+                line_buffer[x + 0] = packed;
+                line_buffer[x + 1] = packed;
+                line_buffer[x + 2] = packed;
+                line_buffer[x + 3] = packed;
+            }
+
+			for(int l = 0; l < 100 && fb_y == lock_y; ++l) {
+				tight_loop_contents();
+				sleep_ms(1); // unsure unlocked, but wait not more than 100ms, to avoid busy-lock
+			}
+
+            memcpy(
+                fb + fb_y * fb_width,
+                line_buffer,
+                fb_width
+            );
+        }
 	}
+
 }
 
 // Main render function for RP2350
