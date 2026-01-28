@@ -84,8 +84,29 @@ _mii_mb_romspace_access(
 		uint8_t * byte,
 		bool write)
 ;
-extern mii_t g_mii;
 #endif
+extern mii_t g_mii;
+
+static inline void
+_mii_aeram_rom_access_side_effect(uint16_t addr)
+{
+    // интересует только $Csxx
+    if ((addr & 0xFF00) < 0xC100 || (addr & 0xFF00) >= 0xC800)
+        return;
+
+    // slot = 1..7
+    int slot = ((addr >> 8) & 0x0F);
+    if (slot < 1 || slot > 7)
+        return;
+
+    mii_slot_t *s = &g_mii.slot[slot - 1];
+    if (!s->drv || strcmp(s->drv->name, "aeram4m") != 0)
+        return;
+
+    mii_card_aeram_t *c = s->drv_priv;
+    if (c)
+        c->regs_enabled = true;
+}
 
 void
 mii_bank_write(
@@ -94,6 +115,9 @@ mii_bank_write(
 		const uint8_t *data,
 		uint16_t len)
 {
+    if (bank == &g_mii.bank[MII_BANK_CARD_ROM]) {
+        _mii_aeram_rom_access_side_effect(addr);
+	}
 #if WITH_BANK_ACCESS
 	if (mii_bank_access(bank, addr, data, len, true))
 		return;
@@ -135,6 +159,9 @@ mii_bank_read(
 		uint8_t *data,
 		uint16_t len)
 {
+    if (bank == &g_mii.bank[MII_BANK_CARD_ROM]) {
+        _mii_aeram_rom_access_side_effect(addr);
+	}
 #if WITH_BANK_ACCESS
 	if (mii_bank_access(bank, addr, data, len, false))
 		return;

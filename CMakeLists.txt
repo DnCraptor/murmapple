@@ -25,7 +25,7 @@ set(PICO_BOARD pico2 CACHE STRING "Board type")
 set(BOARD_VARIANT "M1" CACHE STRING "Board variant: M1 or M2")
 
 # CPU overclock configuration (252, 378, 504 MHz)
-set(CPU_SPEED "378" CACHE STRING "CPU clock in MHz: 252, 378, 504")
+set(CPU_SPEED "504" CACHE STRING "CPU clock in MHz: 252, 378, 504")
 
 set(VIDEO_TYPE "VGA" CACHE STRING "Video output: HDMI or VGA")
 
@@ -218,6 +218,8 @@ add_executable(${BUILD_NAME}
     src/mii_rom_disk2_p5.c
 
     src/mii_smartport.c
+
+    src/mii_ramfactor.c
 
     # Audio support
     src/mii_audio_i2s.c

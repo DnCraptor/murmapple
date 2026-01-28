@@ -652,6 +652,10 @@ int main() {
     }
     slot_res = mii_slot_drv_register(&g_mii, 5, "smartport");
     // TODO: log
+    if (butter_psram_size()) {
+        slot_res = mii_slot_drv_register(&g_mii, 4, "aeram4m");
+    }
+    // TODO: log
     
     // Initialize disk UI with emulator pointer (slot 6 is standard for Disk II)
     disk_ui_init_with_emulator(&g_mii, 6);

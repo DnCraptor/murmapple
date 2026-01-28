@@ -17,11 +17,6 @@
 #include "mii_dd.h"
 #include "debug_log.h"
 #include "disk_loader.h"
-#include "../drivers/psram_allocator.h"
-
-#if PICO_RP2350
-#define HDD_CACHE_BASE (PSRAM_DATA + BDSK_BYTES)
-#endif
 
 void
 mii_dd_system_init(

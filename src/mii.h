@@ -236,6 +236,35 @@ enum {
 	MII_INIT_DEFAULT 	= MII_INIT_NSC,
 };
 
+// ---------------------------- Partition model ----------------------------
+
+typedef struct ae_part_t {
+    uint32_t base_page;   // 256-byte pages, low byte implicit 0 :contentReference[oaicite:19]{index=19}
+    uint32_t size_pages;  // pages
+    uint8_t  os_code;     // screen holes store it :contentReference[oaicite:20]{index=20}
+    uint8_t  os_check;
+    char     name[16];    // not ProDOS format; we format on demand
+} ae_part_t;
+
+typedef struct mii_card_aeram_t {
+    struct mii_slot_t *slot;
+
+    // Slinky address regs
+    uint8_t addr_l;
+    uint8_t addr_m;
+    uint8_t addr_h;
+
+    bool regs_enabled;
+
+    // Firmware bank select register (C08F)
+    uint8_t fw_bank;
+
+    // Partition state
+    bool partitioned;
+    uint8_t current_part;     // 1..9
+    ae_part_t part[9];
+} mii_card_aeram_t;
+
 /*
  * Call this first, to initialize the emulator state
  * This doesn't initializes any driver.
