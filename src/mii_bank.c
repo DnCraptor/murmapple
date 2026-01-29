@@ -85,7 +85,10 @@ _mii_mb_romspace_access(
 		bool write)
 ;
 #endif
+
 extern mii_t g_mii;
+
+void _mii_aeram_rom_access_side_effect2(int slot);
 
 static inline void
 _mii_aeram_rom_access_side_effect(uint16_t addr)
@@ -93,19 +96,11 @@ _mii_aeram_rom_access_side_effect(uint16_t addr)
     // интересует только $Csxx
     if ((addr & 0xFF00) < 0xC100 || (addr & 0xFF00) >= 0xC800)
         return;
-
     // slot = 1..7
     int slot = ((addr >> 8) & 0x0F);
     if (slot < 1 || slot > 7)
         return;
-
-    mii_slot_t *s = &g_mii.slot[slot - 1];
-    if (!s->drv || strcmp(s->drv->name, "aeram4m") != 0)
-        return;
-
-    mii_card_aeram_t *c = s->drv_priv;
-    if (c)
-        c->regs_enabled = true;
+	_mii_aeram_rom_access_side_effect2(slot);
 }
 
 void

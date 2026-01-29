@@ -652,8 +652,8 @@ int main() {
     }
     slot_res = mii_slot_drv_register(&g_mii, 5, "smartport");
     // TODO: log
-    if (butter_psram_size()) {
-        slot_res = mii_slot_drv_register(&g_mii, 4, "aeram4m");
+    if (butter_psram_size() > (4L << 20)) {
+        slot_res = mii_slot_drv_register(&g_mii, AE_SLOT_NO, AE_DRV_NAME);
     }
     // TODO: log
     

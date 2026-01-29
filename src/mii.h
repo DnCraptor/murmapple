@@ -265,6 +265,9 @@ typedef struct mii_card_aeram_t {
     ae_part_t part[9];
 } mii_card_aeram_t;
 
+#define AE_DRV_NAME "aeram4m"
+#define AE_SLOT_NO 4
+
 /*
  * Call this first, to initialize the emulator state
  * This doesn't initializes any driver.
