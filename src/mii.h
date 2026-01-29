@@ -256,13 +256,9 @@ typedef struct mii_card_aeram_t {
 
     bool regs_enabled;
 
-    // Firmware bank select register (C08F)
-    uint8_t fw_bank;
+    // Firmware bank select register
+    uint8_t current_bank;
 
-    // Partition state
-    bool partitioned;
-    uint8_t current_part;     // 1..9
-    ae_part_t part[9];
 } mii_card_aeram_t;
 
 #define AE_DRV_NAME "aeram4m"

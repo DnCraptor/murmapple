@@ -148,15 +148,69 @@ void pin_ram_pages_for(
 #endif	
 }
 
+#define AE_WINDOW_BASE 0xD000
+#define AE_WINDOW_SIZE 0x3000
+#define AE_TURN_OFF_ADDR 0xCFFF
+
+void _mii_aeram_rom_access_side_effect2(int slot);
+
+static inline void
+_mii_aeram_rom_access_side_effect(uint32_t addr)
+{
+    // интересует только $Csxx
+    if ((addr & 0xFF00) < 0xC100 || (addr & 0xFF00) >= 0xC800)
+        return;
+    // slot = 1..7
+    int slot = ((addr >> 8) & 0x0F);
+    if (slot < 1 || slot > 7)
+        return;
+	_mii_aeram_rom_access_side_effect2(slot);
+}
+
+bool
+_mii_aeram_psram_write(
+		uint16_t addr,
+		const uint8_t *data,
+		uint16_t len
+);
+
+bool
+_mii_aeram_psram_read(
+		uint16_t addr,
+		uint8_t *data,
+		uint16_t len
+);
+
+void _mii_aeram_CFFF_access_side_effect();
+
 inline static
 uint8_t ram_page_read(vram_t* v, const uint32_t addr32) {
-    const register uint8_t ram_page = get_ram_page_for(v, addr32);
+    if (addr32 >= 0xC100 && addr32 < 0xC800) { // TODO:
+        _mii_aeram_rom_access_side_effect(addr32);
+	}
+	if (addr32 == AE_TURN_OFF_ADDR) {
+		_mii_aeram_CFFF_access_side_effect();
+	}
+	if (addr32 >= AE_WINDOW_BASE && addr32 < (AE_WINDOW_BASE + AE_WINDOW_SIZE)) {
+		uint8_t res;
+		if(_mii_aeram_psram_read(addr32, &res, 1)) return res;
+	}
+	const register uint8_t ram_page = get_ram_page_for(v, addr32);
     const register uint32_t addr_in_page = addr32 & RAM_IN_PAGE_ADDR_MASK;
     return v->raw[(ram_page * RAM_PAGE_SIZE) + addr_in_page];
 }
 
 inline static
 void ram_page_write(vram_t* v, const uint32_t addr32, const uint8_t val) {
+    if (addr32 >= 0xC100 && addr32 < 0xC800) { // TODO:
+        _mii_aeram_rom_access_side_effect(addr32);
+	}
+	if (addr32 == AE_TURN_OFF_ADDR) {
+		_mii_aeram_CFFF_access_side_effect();
+	}
+	if (addr32 >= AE_WINDOW_BASE && addr32 < (AE_WINDOW_BASE + AE_WINDOW_SIZE)) {
+		if(_mii_aeram_psram_write(addr32, &val, 1)) return;
+	}
     const register uint8_t ram_page = get_ram_page_for(v, addr32);
     const register uint32_t addr_in_page = addr32 & RAM_IN_PAGE_ADDR_MASK;
     v->raw[(ram_page * RAM_PAGE_SIZE) + addr_in_page] = val;

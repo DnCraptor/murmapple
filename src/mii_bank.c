@@ -88,21 +88,6 @@ _mii_mb_romspace_access(
 
 extern mii_t g_mii;
 
-void _mii_aeram_rom_access_side_effect2(int slot);
-
-static inline void
-_mii_aeram_rom_access_side_effect(uint16_t addr)
-{
-    // интересует только $Csxx
-    if ((addr & 0xFF00) < 0xC100 || (addr & 0xFF00) >= 0xC800)
-        return;
-    // slot = 1..7
-    int slot = ((addr >> 8) & 0x0F);
-    if (slot < 1 || slot > 7)
-        return;
-	_mii_aeram_rom_access_side_effect2(slot);
-}
-
 void
 mii_bank_write(
 		mii_bank_t *bank,
@@ -112,6 +97,12 @@ mii_bank_write(
 {
     if (bank == &g_mii.bank[MII_BANK_CARD_ROM]) {
         _mii_aeram_rom_access_side_effect(addr);
+	}
+	if (addr == AE_TURN_OFF_ADDR) {
+		_mii_aeram_CFFF_access_side_effect();
+	}
+	if (addr >= AE_WINDOW_BASE && addr < (AE_WINDOW_BASE + AE_WINDOW_SIZE)) {
+		if(_mii_aeram_psram_write(addr, data, len)) return;
 	}
 #if WITH_BANK_ACCESS
 	if (mii_bank_access(bank, addr, data, len, true))
@@ -156,6 +147,12 @@ mii_bank_read(
 {
     if (bank == &g_mii.bank[MII_BANK_CARD_ROM]) {
         _mii_aeram_rom_access_side_effect(addr);
+	}
+	if (addr == AE_TURN_OFF_ADDR) {
+		_mii_aeram_CFFF_access_side_effect();
+	}
+	if (addr >= AE_WINDOW_BASE && addr < (AE_WINDOW_BASE + AE_WINDOW_SIZE)) {
+		if(_mii_aeram_psram_read(addr, data, len)) return;
 	}
 #if WITH_BANK_ACCESS
 	if (mii_bank_access(bank, addr, data, len, false))

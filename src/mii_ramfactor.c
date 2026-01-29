@@ -101,7 +101,7 @@ static const unsigned char AE_RamFactor_ROM_v1_4_bin[] = {
 	0xae, 0xae, 0xae, 0xae, 0xae, 0xae, 0xae, 0xae, 0xae, 0xae, 0xae, 0xae,
 	0xae, 0xae, 0xae, 0xae, 0xae, 0xae, 0xae, 0xae, 0xae, 0xae, 0xae, 0xae,
 	0xae, 0xae, 0xae, 0xae,
-    // default pageL
+    // assumed page for slot 1
     0xc9, 0x20, 0xc9, 0x00, 0xc9, 0x03, 0xc9, 0x00,
 	0xb0, 0x31, 0x20, 0x16, 0xc1, 0x4c, 0x9b, 0xc1, 0x20, 0x16, 0xc1, 0x4c,
 	0x9f, 0xc1, 0x8d, 0x0c, 0xc0, 0x8d, 0x00, 0xc0, 0x8d, 0x0e, 0xc0, 0x20,
@@ -123,7 +123,9 @@ static const unsigned char AE_RamFactor_ROM_v1_4_bin[] = {
 	0x0a, 0x00, 0xc8, 0x26, 0xcb, 0xf4, 0xcf, 0xb8, 0x50, 0x06, 0x20, 0x28,
 	0xc1, 0x4c, 0x00, 0xc8, 0x20, 0x28, 0xc1, 0x4c, 0xe8, 0xcb, 0xc9, 0x10,
 	0xf0, 0x04, 0xaa, 0xa0, 0x0f, 0x60, 0x68, 0x68, 0x20, 0x28, 0xc1, 0x4c,
-	0x6f, 0xcc, 0xae, 0x01, 0x00, 0x00, 0x4f, 0xdb, 0xc9, 0x20, 0xc9, 0x00,
+	0x6f, 0xcc, 0xae, 0x01, 0x00, 0x00, 0x4f, 0xdb,
+    // page for slot 2
+    0xc9, 0x20, 0xc9, 0x00,
 	0xc9, 0x03, 0xc9, 0x00, 0xb0, 0x31, 0x20, 0x16, 0xc2, 0x4c, 0x9b, 0xc2,
 	0x20, 0x16, 0xc2, 0x4c, 0x9f, 0xc2, 0x8d, 0x0c, 0xc0, 0x8d, 0x00, 0xc0,
 	0x8d, 0x0e, 0xc0, 0x20, 0x2f, 0xfb, 0x20, 0x93, 0xfe, 0x20, 0x89, 0xfe,
@@ -145,6 +147,7 @@ static const unsigned char AE_RamFactor_ROM_v1_4_bin[] = {
 	0x50, 0x06, 0x20, 0x28, 0xc2, 0x4c, 0x00, 0xc8, 0x20, 0x28, 0xc2, 0x4c,
 	0xe8, 0xcb, 0xc9, 0x20, 0xf0, 0x04, 0xaa, 0xa0, 0x0f, 0x60, 0x68, 0x68,
 	0x20, 0x28, 0xc2, 0x4c, 0x6f, 0xcc, 0xae, 0x01, 0x00, 0x00, 0x4f, 0xdb,
+    // page for slot 3
 	0xc9, 0x20, 0xc9, 0x00, 0xc9, 0x03, 0xc9, 0x00, 0xb0, 0x31, 0x20, 0x16,
 	0xc3, 0x4c, 0x9b, 0xc3, 0x20, 0x16, 0xc3, 0x4c, 0x9f, 0xc3, 0x8d, 0x0c,
 	0xc0, 0x8d, 0x00, 0xc0, 0x8d, 0x0e, 0xc0, 0x20, 0x2f, 0xfb, 0x20, 0x93,
@@ -166,7 +169,9 @@ static const unsigned char AE_RamFactor_ROM_v1_4_bin[] = {
 	0xcb, 0xf4, 0xcf, 0xb8, 0x50, 0x06, 0x20, 0x28, 0xc3, 0x4c, 0x00, 0xc8,
 	0x20, 0x28, 0xc3, 0x4c, 0xe8, 0xcb, 0xc9, 0x30, 0xf0, 0x04, 0xaa, 0xa0,
 	0x0f, 0x60, 0x68, 0x68, 0x20, 0x28, 0xc3, 0x4c, 0x6f, 0xcc, 0xae, 0x01,
-	0x00, 0x00, 0x4f, 0xdb, 0xc9, 0x20, 0xc9, 0x00, 0xc9, 0x03, 0xc9, 0x00,
+	0x00, 0x00, 0x4f, 0xdb,
+    // page for slot 4
+    0xc9, 0x20, 0xc9, 0x00, 0xc9, 0x03, 0xc9, 0x00,
 	0xb0, 0x31, 0x20, 0x16, 0xc4, 0x4c, 0x9b, 0xc4, 0x20, 0x16, 0xc4, 0x4c,
 	0x9f, 0xc4, 0x8d, 0x0c, 0xc0, 0x8d, 0x00, 0xc0, 0x8d, 0x0e, 0xc0, 0x20,
 	0x2f, 0xfb, 0x20, 0x93, 0xfe, 0x20, 0x89, 0xfe, 0xa0, 0xc4, 0xae, 0xff,
@@ -187,7 +192,9 @@ static const unsigned char AE_RamFactor_ROM_v1_4_bin[] = {
 	0x0a, 0x00, 0xc8, 0x26, 0xcb, 0xf4, 0xcf, 0xb8, 0x50, 0x06, 0x20, 0x28,
 	0xc4, 0x4c, 0x00, 0xc8, 0x20, 0x28, 0xc4, 0x4c, 0xe8, 0xcb, 0xc9, 0x40,
 	0xf0, 0x04, 0xaa, 0xa0, 0x0f, 0x60, 0x68, 0x68, 0x20, 0x28, 0xc4, 0x4c,
-	0x6f, 0xcc, 0xae, 0x01, 0x00, 0x00, 0x4f, 0xdb, 0xc9, 0x20, 0xc9, 0x00,
+	0x6f, 0xcc, 0xae, 0x01, 0x00, 0x00, 0x4f, 0xdb,
+    // page for slot 5
+    0xc9, 0x20, 0xc9, 0x00,
 	0xc9, 0x03, 0xc9, 0x00, 0xb0, 0x31, 0x20, 0x16, 0xc5, 0x4c, 0x9b, 0xc5,
 	0x20, 0x16, 0xc5, 0x4c, 0x9f, 0xc5, 0x8d, 0x0c, 0xc0, 0x8d, 0x00, 0xc0,
 	0x8d, 0x0e, 0xc0, 0x20, 0x2f, 0xfb, 0x20, 0x93, 0xfe, 0x20, 0x89, 0xfe,
@@ -209,6 +216,7 @@ static const unsigned char AE_RamFactor_ROM_v1_4_bin[] = {
 	0x50, 0x06, 0x20, 0x28, 0xc5, 0x4c, 0x00, 0xc8, 0x20, 0x28, 0xc5, 0x4c,
 	0xe8, 0xcb, 0xc9, 0x50, 0xf0, 0x04, 0xaa, 0xa0, 0x0f, 0x60, 0x68, 0x68,
 	0x20, 0x28, 0xc5, 0x4c, 0x6f, 0xcc, 0xae, 0x01, 0x00, 0x00, 0x4f, 0xdb,
+    // page for slot 6
 	0xc9, 0x20, 0xc9, 0x00, 0xc9, 0x03, 0xc9, 0x00, 0xb0, 0x31, 0x20, 0x16,
 	0xc6, 0x4c, 0x9b, 0xc6, 0x20, 0x16, 0xc6, 0x4c, 0x9f, 0xc6, 0x8d, 0x0c,
 	0xc0, 0x8d, 0x00, 0xc0, 0x8d, 0x0e, 0xc0, 0x20, 0x2f, 0xfb, 0x20, 0x93,
@@ -230,7 +238,9 @@ static const unsigned char AE_RamFactor_ROM_v1_4_bin[] = {
 	0xcb, 0xf4, 0xcf, 0xb8, 0x50, 0x06, 0x20, 0x28, 0xc6, 0x4c, 0x00, 0xc8,
 	0x20, 0x28, 0xc6, 0x4c, 0xe8, 0xcb, 0xc9, 0x60, 0xf0, 0x04, 0xaa, 0xa0,
 	0x0f, 0x60, 0x68, 0x68, 0x20, 0x28, 0xc6, 0x4c, 0x6f, 0xcc, 0xae, 0x01,
-	0x00, 0x00, 0x4f, 0xdb, 0xc9, 0x20, 0xc9, 0x00, 0xc9, 0x03, 0xc9, 0x00,
+	0x00, 0x00, 0x4f, 0xdb,
+    // page for slot 7
+    0xc9, 0x20, 0xc9, 0x00, 0xc9, 0x03, 0xc9, 0x00,
 	0xb0, 0x31, 0x20, 0x16, 0xc7, 0x4c, 0x9b, 0xc7, 0x20, 0x16, 0xc7, 0x4c,
 	0x9f, 0xc7, 0x8d, 0x0c, 0xc0, 0x8d, 0x00, 0xc0, 0x8d, 0x0e, 0xc0, 0x20,
 	0x2f, 0xfb, 0x20, 0x93, 0xfe, 0x20, 0x89, 0xfe, 0xa0, 0xc7, 0xae, 0xff,
@@ -767,26 +777,6 @@ static const unsigned char AE_RamFactor_ROM_v1_4_bin[] = {
 };
 
 /* ------------------------------------------------------------ */
-/* Buffer bank helpers (Protocol Converter 0x08 / 0x09 only)   */
-/* ------------------------------------------------------------ */
-
-static inline mii_bank_t *
-ae_get_bank_for_buffer_write(mii_t *mii, bool buffer_is_aux)
-{
-    return buffer_is_aux
-        ? &mii->bank[MII_BANK_AUX]
-        : &mii->bank[MII_BANK_MAIN];
-}
-
-static inline mii_bank_t *
-ae_get_bank_for_buffer_read(mii_t *mii, bool buffer_is_aux)
-{
-    return buffer_is_aux
-        ? &mii->bank[MII_BANK_AUX]
-        : &mii->bank[MII_BANK_MAIN];
-}
-
-/* ------------------------------------------------------------ */
 /* Card memory helpers                                          */
 /* ------------------------------------------------------------ */
 
@@ -794,22 +784,6 @@ static inline uint32_t
 ae_mask_addr(uint32_t a)
 {
     return a & (AE_RAM_BYTES - 1);
-}
-
-/* ------------------------------------------------------------ */
-/* Partition helpers                                            */
-/* ------------------------------------------------------------ */
-
-static inline uint32_t
-ae_part_blocks(const ae_part_t *p)
-{
-    return p->size_pages / 2u;
-}
-
-static inline uint32_t
-ae_part_base_bytes(const ae_part_t *p)
-{
-    return p->base_page * AE_PAGE_SIZE;
 }
 
 /* ------------------------------------------------------------ */
@@ -839,416 +813,6 @@ ae_inc_card_addr24(mii_card_aeram_t *c)
 }
 
 /* ------------------------------------------------------------ */
-/* ProDOS firmware entry ($42..$47)                              */
-/* ------------------------------------------------------------ */
-
-static void
-_mii_aeram_prodos_callback(mii_t *mii, uint8_t trap)
-{
-    (void)trap;
-    int sid = ((mii->cpu.PC >> 8) & 0xF) - 1;
-    mii_card_aeram_t *c = mii->slot[sid].drv_priv;
-
-    uint8_t  cmd    = mii_read_one(mii, 0x42);
-    uint8_t  unit   = mii_read_one(mii, 0x43);
-    uint16_t buffer = mii_read_word(mii, 0x44);
-    uint16_t blk    = mii_read_word(mii, 0x46);
-
-    if (unit > 1) { mii->cpu.P.C = 1; return; }
-
-    ae_part_t *p = &c->part[c->current_part - 1];
-    uint32_t blocks = ae_part_blocks(p);
-
-    switch (cmd) {
-        case 0:
-            mii->cpu.X = (uint8_t)(blocks & 0xFF);
-            mii->cpu.Y = (uint8_t)((blocks >> 8) & 0xFF);
-            mii->cpu.P.C = 0;
-            return;
-
-        case 1: {
-            if (blk >= blocks) { mii->cpu.P.C = 1; return; }
-            uint32_t off = ae_part_base_bytes(p) + blk * AE_BLOCK_SIZE;
-            mii_bank_write(&mii->bank[MII_BANK_MAIN],
-                           buffer,
-                           AE_RAM_BASE + off,
-                           AE_BLOCK_SIZE);
-            mii->cpu.P.C = 0;
-            return;
-        }
-
-        case 2: {
-            if (blk >= blocks) { mii->cpu.P.C = 1; return; }
-            uint32_t off = ae_part_base_bytes(p) + blk * AE_BLOCK_SIZE;
-            mii_bank_read(&mii->bank[MII_BANK_MAIN],
-                          buffer,
-                          AE_RAM_BASE + off,
-                          AE_BLOCK_SIZE);
-            mii->cpu.P.C = 0;
-            return;
-        }
-
-        default:
-            mii->cpu.P.C = 1;
-            return;
-    }
-}
-
-/* ------------------------------------------------------------ */
-/* Partition table + Screenholes (AE RamFactor / PC firmware)   */
-/* ------------------------------------------------------------ */
-
-static inline void
-ae_write_card_u8(uint32_t card_addr, uint8_t v)
-{
-    if (card_addr < AE_RAM_BYTES)
-        AE_RAM_BASE[card_addr] = v;
-}
-
-static inline uint8_t
-ae_read_card_u8(uint32_t card_addr)
-{
-    if (card_addr < AE_RAM_BYTES)
-        return AE_RAM_BASE[card_addr];
-    return 0x00;
-}
-
-/*
- * Build default “partitioned” layout:
- * - reserve first 1024 bytes (pages 0..3)
- * - partition #1 uses the rest
- * - partitions #2..#9 empty
- *
- * Also writes partition table block at card address $000000..$0000FF
- * in the format that AE/PC utilities expect.
- */
-static void
-ae_build_default_partitions(mii_card_aeram_t *c)
-{
-    if (!c)
-        return;
-
-    memset(c->part, 0, sizeof(c->part));
-    c->partitioned  = true;
-    c->current_part = 1;
-
-    const uint32_t usable_pages = AE_TOTAL_PAGES - AE_RESERVED_PAGES;
-
-    /* Partition 1: all usable memory */
-    c->part[0].base_page  = AE_RESERVED_PAGES;
-    c->part[0].size_pages = usable_pages;
-    c->part[0].os_code    = 0x00;
-    c->part[0].os_check   = 0x00;
-    memcpy(c->part[0].name, "RAMCARD         ", 16);
-
-    /* Partitions 2..9 empty */
-    for (int i = 1; i < 9; i++) {
-        c->part[i].base_page  = c->part[0].base_page + c->part[0].size_pages; /* end */
-        c->part[i].size_pages = 0;
-        c->part[i].os_code    = 0x00;
-        c->part[i].os_check   = 0x00;
-        memcpy(c->part[i].name, "                ", 16);
-    }
-
-    /*
-     * Partition table at card address 000000..0000FF.
-     * Header:
-     *  00: $AE
-     *  01: $F4
-     *  02: partition index pointer (24*part - 16)
-     *  03: index ^ $5A
-     *  04: total blocks / 256
-     *  05..07: usually unused/0
-     *  08.. : 9 descriptors * 24 bytes
-     *
-     * Descriptor (24 bytes):
-     *  +0 base_page_hi
-     *  +1 base_page_lo (page)
-     *  +2 size_page_hi
-     *  +3 size_page_lo
-     *  +4 os_code
-     *  +5 os_check
-     *  +6..+7 reserved (0)
-     *  +8..+23 name[16]
-     */
-    ae_write_card_u8(0x000000, 0xAE);
-    ae_write_card_u8(0x000001, 0xF4);
-
-    const uint8_t part_index = (uint8_t)(24 * c->current_part - 16);
-    ae_write_card_u8(0x000002, part_index);
-    ae_write_card_u8(0x000003, (uint8_t)(part_index ^ 0x5A));
-
-    ae_write_card_u8(0x000004, (uint8_t)(AE_TOTAL_BLOCKS / 256));
-
-    /* bytes 0x05..0x07 */
-    ae_write_card_u8(0x000005, 0x00);
-    ae_write_card_u8(0x000006, 0x00);
-    ae_write_card_u8(0x000007, 0x00);
-
-    for (int p = 0; p < 9; p++) {
-        const uint32_t off  = 0x08u + (uint32_t)p * 24u;
-        const uint32_t base = (uint32_t)c->part[p].base_page;
-        const uint32_t size = (uint32_t)c->part[p].size_pages;
-
-        ae_write_card_u8(off + 0, (uint8_t)((base >> 8) & 0xFF));
-        ae_write_card_u8(off + 1, (uint8_t)((base >> 0) & 0xFF));
-        ae_write_card_u8(off + 2, (uint8_t)((size >> 8) & 0xFF));
-        ae_write_card_u8(off + 3, (uint8_t)((size >> 0) & 0xFF));
-        ae_write_card_u8(off + 4, c->part[p].os_code);
-        ae_write_card_u8(off + 5, c->part[p].os_check);
-        ae_write_card_u8(off + 6, 0x00);
-        ae_write_card_u8(off + 7, 0x00);
-
-        for (int i = 0; i < 16; i++)
-            ae_write_card_u8(off + 8u + (uint32_t)i, (uint8_t)c->part[p].name[i]);
-    }
-}
-
-/*
- * Update “screenholes” used by AE/PC tools:
- * $0478+$s  total blocks/256
- * $04F8+$s  partition index pointer (24*part - 16)
- * $0578/$05F8 base page hi/lo
- * $0678/$06F8 size pages hi/lo
- * $0778/$07F8 os_code/os_check
- *
- * (s = slot number 1..7)
- */
-static void
-ae_update_screenholes(mii_t *mii, mii_card_aeram_t *c)
-{
-    if (!mii || !c || !c->slot)
-        return;
-
-    const int slot = c->slot->id + 1; /* slot->id is 0..6 */
-    if (slot < 1 || slot > 7)
-        return;
-
-    if (!c->partitioned) {
-        /* keep consistent behaviour */
-        ae_build_default_partitions(c);
-    }
-
-    if (c->current_part < 1 || c->current_part > 9)
-        c->current_part = 1;
-
-    const ae_part_t *p = &c->part[c->current_part - 1];
-
-    const uint16_t sh478 = (uint16_t)(0x0478 + slot);
-    const uint16_t sh4F8 = (uint16_t)(0x04F8 + slot);
-    const uint16_t sh578 = (uint16_t)(0x0578 + slot);
-    const uint16_t sh5F8 = (uint16_t)(0x05F8 + slot);
-    const uint16_t sh678 = (uint16_t)(0x0678 + slot);
-    const uint16_t sh6F8 = (uint16_t)(0x06F8 + slot);
-    const uint16_t sh778 = (uint16_t)(0x0778 + slot);
-    const uint16_t sh7F8 = (uint16_t)(0x07F8 + slot);
-
-    /* total blocks/256 for the whole card */
-    mii_write_one(mii, sh478, (uint8_t)(AE_TOTAL_BLOCKS / 256));
-
-    /* index pointer */
-    mii_write_one(mii, sh4F8, (uint8_t)(24 * c->current_part - 16));
-
-    /* base page hi/lo */
-    mii_write_one(mii, sh578, (uint8_t)((p->base_page >> 8) & 0xFF));
-    mii_write_one(mii, sh5F8, (uint8_t)((p->base_page >> 0) & 0xFF));
-
-    /* size pages hi/lo */
-    mii_write_one(mii, sh678, (uint8_t)((p->size_pages >> 8) & 0xFF));
-    mii_write_one(mii, sh6F8, (uint8_t)((p->size_pages >> 0) & 0xFF));
-
-    mii_write_one(mii, sh778, p->os_code);
-    mii_write_one(mii, sh7F8, p->os_check);
-}
-
-/* ------------------------------------------------------------ */
-/* Protocol Converter entry                                     */
-/* ------------------------------------------------------------ */
-static void
-_mii_aeram_pc_callback(mii_t *mii, uint8_t trap)
-{
-    (void)trap;
-    int sid = ((mii->cpu.PC >> 8) & 0xF) - 1;
-    mii_card_aeram_t *c = mii->slot[sid].drv_priv;
-    if (!c) return;
-
-    uint16_t sp   = (uint16_t)(0x100 + mii->cpu.S + 1);
-    uint16_t call = mii_read_word(mii, sp);
-
-    uint8_t  cmd    = mii_read_one(mii, (uint16_t)(call + 1));
-    uint16_t params = mii_read_word(mii, (uint16_t)(call + 2));
-
-    // JSR inline return fix
-    mii_write_word(mii, sp, (uint16_t)(call + 3));
-
-#define ERR(x) do { mii->cpu.P.C = 1; mii->cpu.A = (uint8_t)(x); return; } while (0)
-#define OK()   do { mii->cpu.P.C = 0; mii->cpu.A = 0; return; } while (0)
-
-    uint8_t  pcount = mii_read_one(mii, (uint16_t)(params + 0));
-    uint8_t  unit   = mii_read_one(mii, (uint16_t)(params + 1));
-    uint16_t buffer = mii_read_word(mii, (uint16_t)(params + 2));
-
-    MII_DEBUG_RAM_AE(
-        "AEPC: PC=%04X S=%02X call=%04X cmd=%02X params=%04X pcount=%02X unit=%02X buf=%04X\n",
-        mii->cpu.PC, mii->cpu.S, call, cmd, params, pcount, unit, buffer
-    );
-
-    if (unit > 1) ERR(0x11);
-
-    if (!c->partitioned)
-        ae_build_default_partitions(c);
-    ae_update_screenholes(mii, c);
-
-    ae_part_t *p = &c->part[c->current_part - 1];
-    uint32_t blocks = ae_part_blocks(p);
-
-    mii_bank_t *bw = &mii->bank[MII_BANK_MAIN];
-    mii_bank_t *br = &mii->bank[MII_BANK_MAIN];
-
-    switch (cmd) {
-
-        case 0x00: { // Status
-            if (pcount != 3) ERR(0x04);
-            uint8_t code = mii_read_one(mii, (uint16_t)(params + 4));
-
-            MII_DEBUG_RAM_AE("AEPC: STATUS unit=%d code=%02X\n", unit, code);
-
-            if (unit == 0) {
-                if (code != 0x00) ERR(0x21);
-                uint8_t st[8] = { 0x01,0,0,0,0,0,0,0 };
-                mii_bank_write(bw, buffer, st, sizeof(st));
-                mii->cpu.X = 0x08;
-                mii->cpu.Y = 0x00;
-                OK();   // ← ВАЖНО: немедленный выход
-            }
-
-            if (code == 0x00) {
-                uint8_t st[4] = {
-                    0xF8,
-                    (uint8_t)(blocks & 0xFF),
-                    (uint8_t)((blocks >> 8) & 0xFF),
-                    (uint8_t)((blocks >> 16) & 0xFF)
-                };
-                mii_bank_write(bw, buffer, st, sizeof(st));
-                mii->cpu.X = 0x04;
-                mii->cpu.Y = 0x00;
-                OK();
-            }
-
-            if (code == 0x03) {
-                uint8_t st[25];
-                memset(st, 0, sizeof(st));
-                st[0] = 0xF8;
-                st[1] = (uint8_t)(blocks & 0xFF);
-                st[2] = (uint8_t)((blocks >> 8) & 0xFF);
-                st[3] = (uint8_t)((blocks >> 16) & 0xFF);
-
-                const char *name = "RAMCARD";
-                st[4] = 7;
-                for (int i = 0; i < 16; i++) st[5+i] = ' ';
-                for (int i = 0; i < 7; i++)  st[5+i] = (uint8_t)name[i];
-
-                mii_bank_write(bw, buffer, st, sizeof(st));
-                mii->cpu.X = 0x19;
-                mii->cpu.Y = 0x00;
-                OK();
-            }
-
-            ERR(0x21);
-        }
-
-        case 0x01: { // Read Block
-            if (pcount != 3) ERR(0x04);
-            if (unit != 1) ERR(0x11);
-
-            uint32_t blk =
-                (uint32_t)mii_read_one(mii, params + 4) |
-                ((uint32_t)mii_read_one(mii, params + 5) << 8) |
-                ((uint32_t)mii_read_one(mii, params + 6) << 16);
-
-            if (blk >= blocks) ERR(0x2D);
-
-            uint32_t off = ae_part_base_bytes(p) + blk * AE_BLOCK_SIZE;
-            mii_bank_write(bw, buffer, AE_RAM_BASE + off, AE_BLOCK_SIZE);
-            OK();
-        }
-
-        case 0x02: { // Write Block
-            if (pcount != 3) ERR(0x04);
-            if (unit != 1) ERR(0x11);
-
-            uint32_t blk =
-                (uint32_t)mii_read_one(mii, params + 4) |
-                ((uint32_t)mii_read_one(mii, params + 5) << 8) |
-                ((uint32_t)mii_read_one(mii, params + 6) << 16);
-
-            if (blk >= blocks) ERR(0x2D);
-
-            uint32_t off = ae_part_base_bytes(p) + blk * AE_BLOCK_SIZE;
-            mii_bank_read(br, buffer, AE_RAM_BASE + off, AE_BLOCK_SIZE);
-            OK();
-        }
-
-        case 0x03: // Format
-            if (pcount != 1) ERR(0x04);
-            if (unit != 1) ERR(0x11);
-            OK();
-
-        case 0x04: { // Control
-            if (pcount != 3) ERR(0x04);
-            uint8_t code = mii_read_one(mii, params + 4);
-            if (code != 0x00) ERR(0x21);
-            OK();
-        }
-
-        case 0x05: // Init
-            if (pcount != 1) ERR(0x04);
-            OK();
-
-        case 0x06:
-        case 0x07:
-            ERR(0x01);
-
-        case 0x08:
-        case 0x09: {
-            if (pcount != 4) ERR(0x04);
-            if (unit != 1) ERR(0x11);
-            bw = &mii->bank[mii->mem[buffer >> 8].write];
-            br = &mii->bank[mii->mem[buffer >> 8].read];
-
-            uint16_t cnt =
-                (uint16_t)mii_read_one(mii, params + 4) |
-                ((uint16_t)mii_read_one(mii, params + 5) << 8);
-
-            uint8_t adr_lo = mii_read_one(mii, params + 6);
-            uint8_t adr_mi = mii_read_one(mii, params + 7);
-            uint8_t adr_hi = mii_read_one(mii, params + 8);
-
-            bool buf_aux = (adr_hi & 0x80) != 0;
-            uint32_t adr = ((uint32_t)(adr_hi & 0x7F) << 16) |
-                           ((uint32_t)adr_mi << 8) |
-                           (uint32_t)adr_lo;
-
-            if (adr >= AE_RAM_BYTES) ERR(0x2D);
-            if ((uint32_t)cnt > (AE_RAM_BYTES - adr)) ERR(0x2D);
-
-            mii_bank_t *pc_bw = ae_get_bank_for_buffer_write(mii, buf_aux);
-            mii_bank_t *pc_br = ae_get_bank_for_buffer_read (mii, buf_aux);
-
-            if (cmd == 0x08)
-                mii_bank_write(pc_bw, buffer, AE_RAM_BASE + adr, cnt);
-            else
-                mii_bank_read (pc_br, buffer, AE_RAM_BASE + adr, cnt);
-
-            OK();
-        }
-
-        default:
-            ERR(0x01);
-    }
-}
-
-/* ------------------------------------------------------------ */
 /* Slot IO (C08x)                                               */
 /* ------------------------------------------------------------ */
 
@@ -1275,9 +839,14 @@ MII_DEBUG_RAM_AE("AEC0: PC=%04X addr=%04X reg=%X %s byte=%02X enabled=%d\n",
             ae_inc_card_addr24(c);
             return v;
         }
-        case 0xF:
-            if (write) c->fw_bank = byte;
-            return c->fw_bank;
+        case 0x8: c->current_bank |= 1; return 1;
+        case 0x9: c->current_bank |= 0b10; return 1;
+        case 0xA: c->current_bank |= 0b100; return 1;
+        case 0xB: c->current_bank |= 0b1000; return 1;
+        case 0xC: c->current_bank |= 0b10000; return 1;
+        case 0xD: c->current_bank |= 0b100000; return 1;
+        case 0xE: c->current_bank |= 0b1000000; return 1;
+        case 0xF: c->current_bank = 0; return 1;
     }
     return 0;
 }
@@ -1291,7 +860,7 @@ static int
 _mii_aeram_init(mii_t *mii, struct mii_slot_t *slot)
 {
     mii_card_aeram_t *c = &card;
-MII_DEBUG_RAM_AE("\n_mii_aeram_init\n");
+MII_DEBUG_RAM_AE("\n_mii_aeram_init (%d)\n", slot->id);
 
     memset(c, 0, sizeof(*c));
     c->slot = slot;
@@ -1300,17 +869,7 @@ MII_DEBUG_RAM_AE("\n_mii_aeram_init\n");
     memset(AE_RAM_BASE, 0, AE_RAM_BYTES);
 
     uint16_t rom = 0xC100 + slot->id * 0x100;
-    // copy last page of 32 (#1)
-    mii_bank_write(&mii->bank[MII_BANK_CARD_ROM], rom, AE_RamFactor_ROM_v1_4_bin + 256, 256);
-
-    uint8_t t1 = mii_register_trap(mii, _mii_aeram_prodos_callback);
-    uint8_t t2 = mii_register_trap(mii, _mii_aeram_pc_callback);
-
-    uint8_t s1[2] = { t1, 0x60 };
-    uint8_t s2[2] = { t2, 0x60 };
-
-    mii_bank_write(&mii->bank[MII_BANK_CARD_ROM], rom + AE_PRODOS_OFF, s1, 2);
-    mii_bank_write(&mii->bank[MII_BANK_CARD_ROM], rom + AE_PC_OFF,     s2, 2);
+    mii_bank_write(&mii->bank[MII_BANK_CARD_ROM], rom, AE_RamFactor_ROM_v1_4_bin + (slot->id + 1) * 256, 256);
 
     return 0;
 }
@@ -1325,11 +884,40 @@ MII_DEBUG_RAM_AE("_mii_aeram_dispose\n");
 
 extern mii_t g_mii;
 
+bool
+_mii_aeram_psram_write(
+		uint16_t addr,
+		const uint8_t *data,
+		uint16_t len
+) {
+MII_DEBUG_RAM_AE("_mii_aeram_psram_write(%x, %x)\n", addr, len);
+    if (!card.regs_enabled) return false;
+    memcpy(AE_RAM_BASE - AE_WINDOW_BASE + addr + card.current_bank * AE_WINDOW_SIZE, data, len);
+    return true;
+}
+
+bool
+_mii_aeram_psram_read(
+		uint16_t addr,
+		uint8_t *data,
+		uint16_t len
+) {
+MII_DEBUG_RAM_AE("_mii_aeram_psram_read(%x, %x)\n", addr, len);
+    if (!card.regs_enabled) return false;
+    memcpy(data, AE_RAM_BASE - AE_WINDOW_BASE + addr + card.current_bank * AE_WINDOW_SIZE, len);
+    return true;
+}
+
+void _mii_aeram_CFFF_access_side_effect() {
+    card.regs_enabled = false;
+}
+
 void _mii_aeram_rom_access_side_effect2(int slot) {
 MII_DEBUG_RAM_AE("_mii_aeram_rom_access_side_effect2(%d)\n", slot);
-    if (slot != AE_SLOT_NO) return;
+    if (slot != AE_SLOT_NO || card.regs_enabled) return; // other card or allready enabled
 MII_DEBUG_RAM_AE("_mii_aeram_rom_access_side_effect2(%d) aeram4m regs_enabled = true\n", slot);
     card.regs_enabled = true;
+    card.current_bank = 0;
 }
 
 static mii_slot_drv_t _driver = {
