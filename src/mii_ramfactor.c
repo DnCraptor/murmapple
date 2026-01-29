@@ -829,24 +829,27 @@ MII_DEBUG_RAM_AE("AEC0: PC=%04X addr=%04X reg=%X %s byte=%02X enabled=%d\n",
     if (!c || !c->regs_enabled) return 0;
 
     switch (addr & 0x0F) {
-        case 0x0: if (write) c->addr_l = byte; return c->addr_l;
-        case 0x1: if (write) c->addr_m = byte; return c->addr_m;
-        case 0x2: if (write) c->addr_h = byte; return c->addr_h;
+        case 0x0: if (write) c->addr_l = byte; return 1;
+        case 0x1: if (write) c->addr_m = byte; return 1;
+        case 0x2: if (write) c->addr_h = byte; return 1;
         case 0x3: {
             uint32_t a = ae_mask_addr(ae_get_card_addr24(c));
             uint8_t v = AE_RAM_BASE[a];
-            if (write) AE_RAM_BASE[a] = byte;
+            if (write) {
+                AE_RAM_BASE[a] = byte;
+                ae_inc_card_addr24(c);
+                return 1;
+            }
             ae_inc_card_addr24(c);
             return v;
         }
-        case 0x8: c->current_bank |= 1; return 1;
-        case 0x9: c->current_bank |= 0b10; return 1;
-        case 0xA: c->current_bank |= 0b100; return 1;
-        case 0xB: c->current_bank |= 0b1000; return 1;
-        case 0xC: c->current_bank |= 0b10000; return 1;
-        case 0xD: c->current_bank |= 0b100000; return 1;
-        case 0xE: c->current_bank |= 0b1000000; return 1;
-        case 0xF: c->current_bank = 0; return 1;
+        // assuming it is latch
+        case 0xF: if (write) {
+MII_DEBUG_RAM_AE("aeram4m regs_enabled = true\n", slot);
+            c->current_bank = byte & 0x7F; // TODO: ensure
+            c->regs_enabled = true;
+            return 1;
+        }
     }
     return 0;
 }
@@ -890,8 +893,8 @@ _mii_aeram_psram_write(
 		const uint8_t *data,
 		uint16_t len
 ) {
-MII_DEBUG_RAM_AE("_mii_aeram_psram_write(%x, %x)\n", addr, len);
     if (!card.regs_enabled) return false;
+MII_DEBUG_RAM_AE("_mii_aeram_psram_write(%x, %x, %x)\n", card.current_bank, addr, len);
     memcpy(AE_RAM_BASE - AE_WINDOW_BASE + addr + card.current_bank * AE_WINDOW_SIZE, data, len);
     return true;
 }
@@ -902,22 +905,18 @@ _mii_aeram_psram_read(
 		uint8_t *data,
 		uint16_t len
 ) {
-MII_DEBUG_RAM_AE("_mii_aeram_psram_read(%x, %x)\n", addr, len);
     if (!card.regs_enabled) return false;
+MII_DEBUG_RAM_AE("_mii_aeram_psram_read(%x, %x, %x)\n", card.current_bank, addr, len);
     memcpy(data, AE_RAM_BASE - AE_WINDOW_BASE + addr + card.current_bank * AE_WINDOW_SIZE, len);
     return true;
 }
 
 void _mii_aeram_CFFF_access_side_effect() {
     card.regs_enabled = false;
+    card.current_bank = 0;
 }
 
 void _mii_aeram_rom_access_side_effect2(int slot) {
-MII_DEBUG_RAM_AE("_mii_aeram_rom_access_side_effect2(%d)\n", slot);
-    if (slot != AE_SLOT_NO || card.regs_enabled) return; // other card or allready enabled
-MII_DEBUG_RAM_AE("_mii_aeram_rom_access_side_effect2(%d) aeram4m regs_enabled = true\n", slot);
-    card.regs_enabled = true;
-    card.current_bank = 0;
 }
 
 static mii_slot_drv_t _driver = {
