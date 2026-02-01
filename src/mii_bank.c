@@ -95,9 +95,9 @@ mii_bank_write(
 		const uint8_t *data,
 		uint16_t len)
 {
-    if (bank == &g_mii.bank[MII_BANK_CARD_ROM]) {
+  //  if (bank == &g_mii.bank[MII_BANK_CARD_ROM]) {
         _mii_aeram_rom_access_side_effect(addr);
-	}
+//	}
 	if (addr == AE_TURN_OFF_ADDR) {
 		_mii_aeram_CFFF_access_side_effect();
 	}
@@ -145,9 +145,9 @@ mii_bank_read(
 		uint8_t *data,
 		uint16_t len)
 {
-    if (bank == &g_mii.bank[MII_BANK_CARD_ROM]) {
+  //  if (bank == &g_mii.bank[MII_BANK_CARD_ROM]) {
         _mii_aeram_rom_access_side_effect(addr);
-	}
+	//}
 	if (addr == AE_TURN_OFF_ADDR) {
 		_mii_aeram_CFFF_access_side_effect();
 	}

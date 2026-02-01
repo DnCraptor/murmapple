@@ -148,23 +148,20 @@ void pin_ram_pages_for(
 #endif	
 }
 
+#define AE_SLOT_NO 4
 #define AE_WINDOW_BASE 0xD000
-#define AE_WINDOW_SIZE 0x3000
+#define AE_WINDOW_SIZE 0x1000
 #define AE_TURN_OFF_ADDR 0xCFFF
 
-void _mii_aeram_rom_access_side_effect2(int slot);
+void _mii_aeram_rom_access_side_effect2();
 
 static inline void
 _mii_aeram_rom_access_side_effect(uint32_t addr)
 {
-    // интересует только $Csxx
-    if ((addr & 0xFF00) < 0xC100 || (addr & 0xFF00) >= 0xC800)
+    // интересует только $Csxx AE_SLOT_NO
+    if ((addr & 0xFF00) != (0xC000 + AE_SLOT_NO * 0x100))
         return;
-    // slot = 1..7
-    int slot = ((addr >> 8) & 0x0F);
-    if (slot < 1 || slot > 7)
-        return;
-	_mii_aeram_rom_access_side_effect2(slot);
+	_mii_aeram_rom_access_side_effect2();
 }
 
 bool
@@ -185,9 +182,7 @@ void _mii_aeram_CFFF_access_side_effect();
 
 inline static
 uint8_t ram_page_read(vram_t* v, const uint32_t addr32) {
-    if (addr32 >= 0xC100 && addr32 < 0xC800) { // TODO:
-        _mii_aeram_rom_access_side_effect(addr32);
-	}
+    _mii_aeram_rom_access_side_effect(addr32);
 	if (addr32 == AE_TURN_OFF_ADDR) {
 		_mii_aeram_CFFF_access_side_effect();
 	}
@@ -202,9 +197,7 @@ uint8_t ram_page_read(vram_t* v, const uint32_t addr32) {
 
 inline static
 void ram_page_write(vram_t* v, const uint32_t addr32, const uint8_t val) {
-    if (addr32 >= 0xC100 && addr32 < 0xC800) { // TODO:
-        _mii_aeram_rom_access_side_effect(addr32);
-	}
+    _mii_aeram_rom_access_side_effect(addr32);
 	if (addr32 == AE_TURN_OFF_ADDR) {
 		_mii_aeram_CFFF_access_side_effect();
 	}

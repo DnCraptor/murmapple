@@ -258,11 +258,9 @@ typedef struct mii_card_aeram_t {
 
     // Firmware bank select register
     uint8_t current_bank;
-
 } mii_card_aeram_t;
 
 #define AE_DRV_NAME "aeram4m"
-#define AE_SLOT_NO 4
 
 /*
  * Call this first, to initialize the emulator state

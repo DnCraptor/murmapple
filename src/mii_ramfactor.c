@@ -1,5 +1,5 @@
 /*
- * mii_aeram.c
+ * mii_ramfactor.c
  *
  * Accurate Slinky/RamFactor-compatible AE RAM (4MB) emulation:
  * - Slot ROM signatures ($Cs00..$Cs07, $CsFA/$CsFB, $CsFF)
@@ -823,33 +823,37 @@ _mii_aeram_access(mii_t *mii, struct mii_slot_t *slot,
     (void)mii;
     mii_card_aeram_t *c = slot->drv_priv;
 
-MII_DEBUG_RAM_AE("AEC0: PC=%04X addr=%04X reg=%X %s byte=%02X enabled=%d\n",
-    mii->cpu.PC, addr, addr & 0x0F, write ? "W" : "R", byte, c->regs_enabled);
 
-    if (!c || !c->regs_enabled) return 0;
+    if (!c) return 0;
+	MII_DEBUG_RAM_AE("AEC0: PC=%04X addr=%04X reg=%X %s byte=%02X enabled=%d\n",
+    	mii->cpu.PC, addr, addr & 0x0F, write ? "W" : "R", byte, c->regs_enabled);
+	if (!c->regs_enabled) return 0;
 
     switch (addr & 0x0F) {
-        case 0x0: if (write) c->addr_l = byte; return 1;
-        case 0x1: if (write) c->addr_m = byte; return 1;
-        case 0x2: if (write) c->addr_h = byte; return 1;
+        case 0x0:
+            if (write) c->addr_l = byte;
+            return c->addr_l;
+        case 0x1:
+            if (write) c->addr_m = byte;
+            return c->addr_m;
+        case 0x2:
+            if (write) c->addr_h = byte;
+            return c->addr_h;
         case 0x3: {
             uint32_t a = ae_mask_addr(ae_get_card_addr24(c));
             uint8_t v = AE_RAM_BASE[a];
             if (write) {
                 AE_RAM_BASE[a] = byte;
                 ae_inc_card_addr24(c);
-                return 1;
+                return byte;
             }
             ae_inc_card_addr24(c);
             return v;
-        }
-        // assuming it is latch
-        case 0xF: if (write) {
-MII_DEBUG_RAM_AE("aeram4m regs_enabled = true\n", slot);
-            c->current_bank = byte & 0x7F; // TODO: ensure
-            c->regs_enabled = true;
-            return 1;
-        }
+        case 0xF:
+            // C08F: управляющий регистр/латч
+            if (write) c->current_bank = byte;
+            return c->current_bank;
+		}
     }
     return 0;
 }
@@ -894,8 +898,16 @@ _mii_aeram_psram_write(
 		uint16_t len
 ) {
     if (!card.regs_enabled) return false;
+    /* Only the D000..(D000+AE_WINDOW_SIZE-1) window is backed by the card. */
+    if (addr < AE_WINDOW_BASE) return false;
+    uint32_t off = (uint32_t)addr - (uint32_t)AE_WINDOW_BASE;
+    if (off > AE_WINDOW_SIZE) return false;
+    if ((uint32_t)len > (AE_WINDOW_SIZE - off)) return false;
+    uint32_t bank = (uint32_t)card.current_bank;
+	if (bank == 0) return false;
+    uint8_t *dst = (uint8_t *)AE_RAM_BASE + bank * AE_WINDOW_SIZE + off;
 MII_DEBUG_RAM_AE("_mii_aeram_psram_write(%x, %x, %x)\n", card.current_bank, addr, len);
-    memcpy(AE_RAM_BASE - AE_WINDOW_BASE + addr + card.current_bank * AE_WINDOW_SIZE, data, len);
+	memcpy(dst, data, len);
     return true;
 }
 
@@ -905,18 +917,28 @@ _mii_aeram_psram_read(
 		uint8_t *data,
 		uint16_t len
 ) {
-    if (!card.regs_enabled) return false;
+    /* Only the D000..(D000+AE_WINDOW_SIZE-1) window is backed by the card. */
+    if (addr < AE_WINDOW_BASE) return false;
+    uint32_t off = (uint32_t)addr - (uint32_t)AE_WINDOW_BASE;
+    if (off > AE_WINDOW_SIZE) return false;
+    if ((uint32_t)len > (AE_WINDOW_SIZE - off)) return false;
+    uint32_t bank = (uint32_t)card.current_bank;
+	if (bank == 0) {
+        memcpy(data, AE_RamFactor_ROM_v1_4_bin + 0x0800 + off, len);
+	    return true;
+	}
+    uint8_t *src = (uint8_t *)AE_RAM_BASE + bank * AE_WINDOW_SIZE + off;
 MII_DEBUG_RAM_AE("_mii_aeram_psram_read(%x, %x, %x)\n", card.current_bank, addr, len);
-    memcpy(data, AE_RAM_BASE - AE_WINDOW_BASE + addr + card.current_bank * AE_WINDOW_SIZE, len);
+    memcpy(data, src, len);
     return true;
 }
 
 void _mii_aeram_CFFF_access_side_effect() {
     card.regs_enabled = false;
-    card.current_bank = 0;
 }
 
-void _mii_aeram_rom_access_side_effect2(int slot) {
+void _mii_aeram_rom_access_side_effect2() {
+	card.regs_enabled = true;
 }
 
 static mii_slot_drv_t _driver = {
