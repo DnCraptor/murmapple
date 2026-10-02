@@ -567,7 +567,7 @@ int main() {
     mii_startscreen_info_t screen_info_early = {
         .title = "FRANK Apple",
         .subtitle = "Apple IIe Emulator",
-        .version = "v1.00",
+        .version = "v1.04",
         .cpu_mhz = CPU_CLOCK_MHZ,
 #if PSRAM_MAX_FREQ_MHZ
         .psram_mhz = PSRAM_MAX_FREQ_MHZ,
@@ -715,7 +715,7 @@ int main() {
     mii_startscreen_info_t screen_info = {
         .title = "FRANK Apple",
         .subtitle = "Apple IIe Emulator",
-        .version = "v1.00",
+        .version = "v1.04",
         .cpu_mhz = CPU_CLOCK_MHZ,
 #if PSRAM_MAX_FREQ_MHZ
         .psram_mhz = PSRAM_MAX_FREQ_MHZ,

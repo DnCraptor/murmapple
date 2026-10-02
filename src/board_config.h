@@ -16,6 +16,7 @@
  * 
  * BOARD_M1 - M1 GPIO layout
  * BOARD_M2 - M2 GPIO layout
+ * BOARD_PC - Olimex RP2040-PICO-PC with Pico 2 (PCp2) GPIO layout
  * 
  * PSRAM pin is auto-detected based on chip package:
  *   RP2350B: GPIO47 (for both M1 and M2)
@@ -33,7 +34,7 @@
  */
 
 // Default to M1 if no config specified
-#if !defined(BOARD_M1) && !defined(BOARD_M2)
+#if !defined(BOARD_M1) && !defined(BOARD_M2) && !defined(BOARD_PC)
 #define BOARD_M1
 #endif
 
@@ -56,6 +57,7 @@
 #ifdef BOARD_M1
 #define PSRAM_PIN_RP2350A 19
 #else
+/* M2 and Olimex PICO-PC route QSPI CS1 to GPIO8 on RP2350A. */
 #define PSRAM_PIN_RP2350A 8
 #endif
 
@@ -178,6 +180,48 @@ static inline uint get_psram_pin(void) {
 #define PSRAM_PIN_MISO 4
 
 #endif // BOARD_M2
+
+//=============================================================================
+// Olimex PICO-PC / PCp2 Layout Configuration
+//=============================================================================
+#ifdef BOARD_PC
+
+// HDMI/DVI: clock pair 12/13, data pairs 14..19.
+// The Olimex board has R/G TMDS lanes swapped relative to M1/M2; HDMI.c
+// handles that when PICO_PC is defined.
+#define HDMI_PIN_CLKN 12
+#define HDMI_PIN_CLKP 13
+#define HDMI_PIN_D0N  14
+#define HDMI_PIN_D0P  15
+#define HDMI_PIN_D1N  16
+#define HDMI_PIN_D1P  17
+#define HDMI_PIN_D2N  18
+#define HDMI_PIN_D2P  19
+#define HDMI_BASE_PIN HDMI_PIN_CLKN
+
+// On-board microSD (SPI0)
+#define SDCARD_PIN_CLK    6
+#define SDCARD_PIN_CMD    7
+#define SDCARD_PIN_D0     4
+#define SDCARD_PIN_D3     22
+
+// External PS/2 keyboard
+#define PS2_PIN_CLK  0
+#define PS2_PIN_DATA 1
+
+// UEXT1 NES/SNES gamepad
+#define NESPAD_GPIO_CLK   5
+#define NESPAD_GPIO_DATA  20
+#define NESPAD_GPIO_LATCH 9
+
+// Olimex analog stereo output. GPIO27 and GPIO28 are on different PWM slices.
+#define PWM_RIGHT_PIN 27
+#define PWM_LEFT_PIN  28
+
+#define PSRAM_SPINLOCK 1
+#define PSRAM_ASYNC 1
+
+#endif // BOARD_PC
 
 //=============================================================================
 // Apple IIe Display Configuration

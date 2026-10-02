@@ -16,18 +16,18 @@ cmake_minimum_required(VERSION 3.13)
 
 set(BUILD_NAME "frank_apple")
 
-set(BUILD_VERSION "RC24")
+set(BUILD_VERSION "1.04")
 
 # Set board to Pico 2 (RP2350)
 set(PICO_BOARD pico2 CACHE STRING "Board type")
 
-# Board configuration variant (M1, M2)
-set(BOARD_VARIANT "M1" CACHE STRING "Board variant: M1 or M2")
+# Board configuration variant (M1, M2, PC)
+set(BOARD_VARIANT "PC" CACHE STRING "Board variant: M1, M2 or PC")
 
 # CPU overclock configuration (252, 378, 504 MHz)
 set(CPU_SPEED "378" CACHE STRING "CPU clock in MHz: 252, 378, 504")
 
-set(VIDEO_TYPE "VGA" CACHE STRING "Video output: HDMI or VGA")
+set(VIDEO_TYPE "HDMI" CACHE STRING "Video output: HDMI or VGA")
 
 if(VIDEO_TYPE STREQUAL "HDMI")
     set(VIDEO_HDMI ON)
@@ -57,9 +57,16 @@ endif()
 if(BOARD_VARIANT STREQUAL "M1")
     set(I2S_DATA_PIN "26")
     set(I2S_CLOCK_PIN_BASE "27")
-else()  # M2
+elseif(BOARD_VARIANT STREQUAL "M2")
     set(I2S_DATA_PIN "9")
     set(I2S_CLOCK_PIN_BASE "10")
+elseif(BOARD_VARIANT STREQUAL "PC")
+    # PCp2 adaptation currently uses the board's analog PWM L/R output.
+    if(NOT AUDIO_TYPE STREQUAL "PWM")
+        message(FATAL_ERROR "BOARD_VARIANT=PC currently supports AUDIO_TYPE=PWM only")
+    endif()
+else()
+    message(FATAL_ERROR "Unknown BOARD_VARIANT=${BOARD_VARIANT}; expected M1, M2 or PC")
 endif()
 
 # USB HID Host support (keyboard and gamepad via USB)
@@ -91,7 +98,12 @@ endif()
 set(OUTPUT_DIR "${CMAKE_SOURCE_DIR}/bin/${CMAKE_BUILD_TYPE}")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${OUTPUT_DIR}")
 
-IF(BOARD_VARIANT STREQUAL "M2")
+IF(BOARD_VARIANT STREQUAL "PC")
+    if (NOT PICO_BOARD STREQUAL "pico2")
+        message(FATAL_ERROR "BOARD_VARIANT=PC is the PCp2 target and requires PICO_BOARD=pico2")
+    endif()
+    SET(BUILD_NAME "PCp2-${BUILD_NAME}")
+ELSEIF(BOARD_VARIANT STREQUAL "M2")
     if (PICO_BOARD STREQUAL "pico")
         SET(BUILD_NAME "m2p1-${BUILD_NAME}")
     else()
@@ -166,6 +178,7 @@ add_library(drivers ${DRIVER_SOURCES})
 target_include_directories(drivers PUBLIC drivers drivers/nespad src)
 target_compile_definitions(drivers PRIVATE
     BOARD_${BOARD_VARIANT}
+    $<$<STREQUAL:${BOARD_VARIANT},PC>:PICO_PC=1>
 )
 
 if (PSRAM_SPEED)
@@ -228,6 +241,7 @@ target_include_directories(${BUILD_NAME} PRIVATE
 
 target_compile_definitions(${BUILD_NAME} PRIVATE
     BOARD_${BOARD_VARIANT}
+    $<$<STREQUAL:${BOARD_VARIANT},PC>:PICO_PC=1>
     CPU_CLOCK_MHZ=${CPU_SPEED}
     CPU_VOLTAGE=${CPU_VOLTAGE}
     MII_65C02_DIRECT_ACCESS=1
