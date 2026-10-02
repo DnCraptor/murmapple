@@ -711,6 +711,9 @@ int main() {
 #ifdef BOARD_M2
     board_num = 2;
 #endif
+#ifdef BOARD_PC
+    board_num = 2;
+#endif
 
 #if PSRAM_MAX_FREQ_MHZ
     uint32_t bs = butter_psram_size();
