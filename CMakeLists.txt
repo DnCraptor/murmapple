@@ -16,7 +16,7 @@ cmake_minimum_required(VERSION 3.13)
 
 set(BUILD_NAME "frank_apple")
 
-set(BUILD_VERSION "1.04")
+set(BUILD_VERSION "1.05")
 
 # Set board to Pico 2 (RP2350)
 set(PICO_BOARD pico2 CACHE STRING "Board type")
