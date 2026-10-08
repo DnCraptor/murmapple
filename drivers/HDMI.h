@@ -79,6 +79,8 @@ void graphics_set_defer_irq_to_core1(bool defer);
 // Initialize the IRQ handler on the current core. Call from Core 1 after 
 // graphics_init() was called with defer mode enabled.
 void graphics_init_irq_on_this_core(void);
+// Hand the running HDMI DMA IRQ over to the calling core (core 1).
+void graphics_move_irq_to_this_core(void);
 // Rebind the HDMI DMA IRQ handler to the calling core.
 // Call from Core 1 to ensure HDMI keeps running when Core 0 is busy.
 void graphics_rebind_irq_to_current_core(void);

@@ -239,6 +239,17 @@ static inline uint get_psram_pin(void) {
 #define HDMI_BASE_PIN 32
 #define PIO_VIDEO      pio0
 #define PIO_VIDEO_ADDR pio0
+// Clamp palette levels before TMDS encoding (see graphics_set_palette_hdmi)
+#define HDMI_TMDS_LEVEL_CLAMP 1
+// Serve the HDMI DMA IRQ on core 1 (see graphics_move_irq_to_this_core)
+#define HDMI_IRQ_ON_CORE1 1
+// DMA wins SRAM/AHB arbitration over the cores (see hdmi_init)
+#define HDMI_DMA_BUS_PRIORITY 1
+// Flash QSPI clock limit, as in the other z0p2 firmwares (MOS2, BK, murm386,
+// pico-speccy): 66 MHz gives SCK 63 MHz at 378 MHz. The default 88 MHz gives
+// 75.6 MHz SCK (3x the HDMI pixel clock), and on this board that shows up on
+// the HDMI lines as sparkles and lost sync.
+#define FLASH_MAX_FREQ_MHZ 66
 
 // On-board microSD on SPI1
 #define SDCARD_SPI_BUS    spi1

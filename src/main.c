@@ -165,7 +165,9 @@ extern bool ps2kbd_is_reset_combo(void);  // Ctrl+Alt+Delete pressed
 
 #if PICO_RP2350
 // Flash timing configuration for overclocking
+#ifndef FLASH_MAX_FREQ_MHZ
 #define FLASH_MAX_FREQ_MHZ 88
+#endif
 
 static void __no_inline_not_in_flash_func(set_flash_timings)(int cpu_mhz) {
     const int clock_hz = cpu_mhz * 1000000;
@@ -361,6 +363,10 @@ static __not_in_flash() void video_core_iteration(void) {
 // Core 1 - Video rendering loop
 static __not_in_flash() void core1_main(void) {
     MII_DEBUG_PRINTF("Core 1: Waiting for emulator ready...\n");
+#if HDMI_IRQ_ON_CORE1
+    // Take the HDMI line IRQ away from core 0 (emulator, USB host, SD, audio)
+    graphics_move_irq_to_this_core();
+#endif
     
     // Wait for Core 0 to finish initialization
     while (!g_emulator_ready) {
