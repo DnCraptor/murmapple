@@ -17,6 +17,7 @@
  * BOARD_M1 - M1 GPIO layout
  * BOARD_M2 - M2 GPIO layout
  * BOARD_PC - Olimex RP2040-PICO-PC with Pico 2 (PCp2) GPIO layout
+ * BOARD_Z2 - Waveshare RP2350-PiZero (z0p2) GPIO layout
  * 
  * PSRAM pin is auto-detected based on chip package:
  *   RP2350B: GPIO47 (for both M1 and M2)
@@ -34,7 +35,7 @@
  */
 
 // Default to M1 if no config specified
-#if !defined(BOARD_M1) && !defined(BOARD_M2) && !defined(BOARD_PC)
+#if !defined(BOARD_M1) && !defined(BOARD_M2) && !defined(BOARD_PC) && !defined(BOARD_Z2)
 #define BOARD_M1
 #endif
 
@@ -222,6 +223,53 @@ static inline uint get_psram_pin(void) {
 #define PSRAM_ASYNC 1
 
 #endif // BOARD_PC
+
+//=============================================================================
+// Waveshare RP2350-PiZero / z0p2 Layout Configuration
+//=============================================================================
+#ifdef BOARD_Z2
+
+// Shared ZERO2 code paths in HDMI.c (PIO GPIO base 16 for GPIO32..39)
+#define ZERO2 1
+
+// mini-HDMI on GPIO32..39: data pairs from 32, clock pair 38/39 (see HDMI.h).
+// HDMI runs on PIO0 with GPIO base 16; I2S has PIO1 to itself
+// (PICO_AUDIO_I2S_PIO=1 in CMakeLists.txt); PS/2 and NES use PIO2.
+// All PIOs except PIO0 keep GPIO base 0.
+#define HDMI_BASE_PIN 32
+#define PIO_VIDEO      pio0
+#define PIO_VIDEO_ADDR pio0
+
+// On-board microSD on SPI1
+#define SDCARD_SPI_BUS    spi1
+#define SDCARD_PIN_CLK    30
+#define SDCARD_PIN_CMD    31
+#define SDCARD_PIN_D0     40
+#define SDCARD_PIN_D3     43
+
+// PS/2 keyboard (optional), as in MOS2 and murm386 for z0p2
+#define PS2_PIN_CLK  2
+#define PS2_PIN_DATA 3
+#define PS2_PIO      pio2
+
+// NES/SNES gamepad (optional), as in MOS2 for z0p2; joystick 2 data = GP8
+#define NESPAD_GPIO_CLK   4
+#define NESPAD_GPIO_DATA  7
+#define NESPAD_GPIO_LATCH 5
+#define NESPAD_PIO        pio2
+
+// External I2S DAC (PCM5102A): DIN=GP10, BCK=GP11, LRCK=GP12
+#define I2S_DATA_PIN       10
+#define I2S_CLOCK_PIN_BASE 11
+
+#define PSRAM_SPINLOCK 1
+#define PSRAM_ASYNC 1
+
+#endif // BOARD_Z2
+
+#ifndef PS2_PIO
+#define PS2_PIO pio0
+#endif
 
 //=============================================================================
 // Apple IIe Display Configuration

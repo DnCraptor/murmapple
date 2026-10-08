@@ -567,6 +567,9 @@ int main() {
 #ifdef BOARD_PC
     board_num_early = 3;
 #endif
+#ifdef BOARD_Z2
+    board_num_early = 4;
+#endif
     mii_startscreen_info_t screen_info_early = {
         .title = "FRANK Apple",
         .subtitle = "Apple IIe Emulator",
@@ -712,7 +715,10 @@ int main() {
     board_num = 2;
 #endif
 #ifdef BOARD_PC
-    board_num = 2;
+    board_num = 3;
+#endif
+#ifdef BOARD_Z2
+    board_num = 4;
 #endif
 
 #if PSRAM_MAX_FREQ_MHZ

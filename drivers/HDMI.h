@@ -12,8 +12,18 @@
 #define HDMI_BASE_PIN (6)
 #endif
 
+#ifndef HDMI_PIN_RGB_notBGR
+#if defined(BOARD_Z2)
+// RP2350-PiZero: data pairs start at HDMI_BASE_PIN, clock pair is +6
+#define HDMI_PIN_RGB_notBGR (0)
+#define HDMI_PIN_invert_diffpairs (0)
+#define beginHDMI_PIN_data (HDMI_BASE_PIN)
+#define beginHDMI_PIN_clk (HDMI_BASE_PIN + 6)
+#else
 #define HDMI_PIN_RGB_notBGR (1)
 #define HDMI_PIN_invert_diffpairs (1)
+#endif
+#endif
 
 #ifndef HDMI_BASE_PIN
 #define HDMI_BASE_PIN (6)
